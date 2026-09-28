@@ -87,12 +87,39 @@ def _validate_template(template_name):
     return registry[template_name]
 
 
+def _missing_required_globals(template_info, variable_mapping):
+    """
+    检查模板声明的 required_globals 是否都有值。
+    registry.json 里每个模板都声明了 required_globals，但此前没有任何代码校验它，
+    结果是变量映射为空时照样生成 $y / $x 全未定义的脚本，跑出无意义的结果。
+    """
+    missing = []
+    for key in template_info.get("required_globals") or []:
+        value = variable_mapping.get(key)
+        if key == "controls":
+            ok = bool(_normalize_controls(value))
+        else:
+            ok = bool(str(value).strip()) if value is not None else False
+        if not ok:
+            missing.append(key)
+    return missing
+
+
 def _build_script(file_id, selected_template, variable_mapping):
     file_path = UPLOAD_FOLDER / secure_filename(file_id)
     if not file_path.exists():
         raise FileNotFoundError("找不到指定的数据文件，请重新上传。")
 
     template_info = _validate_template(selected_template)
+
+    missing = _missing_required_globals(template_info, variable_mapping)
+    if missing:
+        template_label = template_info.get("name", selected_template)
+        raise ValueError(
+            f"模板「{template_label}」缺少必需变量：{'、'.join('$' + m for m in missing)}。"
+            f"请在需求中指明变量名，或手动补充变量映射后重试。"
+        )
+
     logic_res = generate_stata_header(variable_mapping)
     load_data_cmd = f'use "{file_path}", clear\n'
     full_header = load_data_cmd + logic_res["header_code"]
