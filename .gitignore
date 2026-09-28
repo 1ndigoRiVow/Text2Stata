@@ -8,3 +8,4 @@ backend/workspace/
 workspace/
 *.log
 .workbuddy/
+~$*
