@@ -1,5 +1,6 @@
 import os
 import json
+import tempfile
 from pathlib import Path
 
 class TemplateManager:
@@ -8,11 +9,11 @@ class TemplateManager:
     负责读取模板注册表 (registry.json) 并将模板与头部代码组装成可执行的 .do 脚本。
     """
     
-    def __init__(self):
-        # 使用 pathlib 绝对定位 templates 文件夹，防止路径错误
-        # __file__ 指向当前文件 (template_manager.py)，parent.parent 视你的具体结构而定
-        # 这里假设 templates 文件夹和 template_manager.py 在同一个 core/ 目录下
-        self.base_dir = Path(__file__).parent / "templates"
+    def __init__(self, base_dir=None):
+        # 默认定位到与 template_manager.py 同级的 templates 文件夹。
+        # base_dir 可显式传入（测试或替换模板库位置），
+        # 避免 __main__ 自测代码误写真实的 templates/registry.json。
+        self.base_dir = Path(base_dir) if base_dir else Path(__file__).parent / "templates"
         self.registry_path = self.base_dir / "registry.json"
         
         # 初始化时加载注册表到内存
@@ -64,8 +65,9 @@ class TemplateManager:
 # 本地测试模块 (直接运行此文件可看效果)
 # ==========================================
 if __name__ == "__main__":
-    # 为了让测试跑通，我们在这个脚本里动态创建一下必须的文件夹和文件
-    test_base = Path(__file__).parent / "templates"
+    # 注意：自测一律写入系统临时目录。
+    # 绝不能写进 templates/，否则会用测试用的 1 个模板覆盖真实的 registry.json。
+    test_base = Path(tempfile.mkdtemp(prefix="t2s_template_selftest_"))
     test_base.mkdir(exist_ok=True)
     (test_base / "regress").mkdir(exist_ok=True)
     
@@ -89,7 +91,7 @@ esttab model_ols using "ols_result.rtf", replace
     with open(test_base / "regress" / "ols_basic.do", "w", encoding="utf-8") as f:
         f.write(test_do_code)
 
-    print("✅ 成功创建测试用的 templates 目录和文件！\n")
+    print(f"✅ 已在临时目录创建测试模板库：{test_base}\n")
 
     # ---------------- 模拟流水线执行 ----------------
     print("=== 开始组装测试 ===")
@@ -104,9 +106,9 @@ global controls "age gender city"
 * 当前识别为横截面数据，无需 xtset/tsset
 * =========================================="""
 
-    # 2. 实例化管理器并执行组装
+    # 2. 实例化管理器并执行组装（显式指向临时模板库，不触碰真实模板）
     try:
-        manager = TemplateManager()
+        manager = TemplateManager(base_dir=test_base)
         final_do_file_content = manager.assemble_script("ols_basic", mock_header)
         
         print("🎉 组装成功！最终将被发送给 Stata 执行的代码如下：\n")
