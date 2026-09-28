@@ -1,0 +1,118 @@
+import os
+import json
+from pathlib import Path
+
+class TemplateManager:
+    """
+    Text2Stata 模板管理器
+    负责读取模板注册表 (registry.json) 并将模板与头部代码组装成可执行的 .do 脚本。
+    """
+    
+    def __init__(self):
+        # 使用 pathlib 绝对定位 templates 文件夹，防止路径错误
+        # __file__ 指向当前文件 (template_manager.py)，parent.parent 视你的具体结构而定
+        # 这里假设 templates 文件夹和 template_manager.py 在同一个 core/ 目录下
+        self.base_dir = Path(__file__).parent / "templates"
+        self.registry_path = self.base_dir / "registry.json"
+        
+        # 初始化时加载注册表到内存
+        self.registry = self._load_registry()
+
+    def _load_registry(self):
+        """内部方法：加载 JSON 注册表"""
+        if not self.registry_path.exists():
+            raise FileNotFoundError(f"找不到模板注册表：{self.registry_path}\n请确保创建了该文件！")
+            
+        with open(self.registry_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    def get_template_info(self, template_name):
+        """获取单个模板的元数据信息"""
+        if template_name not in self.registry:
+            raise ValueError(f"未知的模板名称：'{template_name}'，请检查 registry.json")
+        return self.registry[template_name]
+
+    def get_all_templates(self):
+        """获取所有可用模板的列表（未来可用于前端下拉菜单或交给大模型参考）"""
+        return self.registry
+
+    def assemble_script(self, template_name, header_code):
+        """
+        核心装配流水线：将生成的 global 头部与预设的 .do 模板拼接。
+        """
+        # 1. 获取模板信息
+        template_info = self.get_template_info(template_name)
+        
+        # 2. 定位 .do 文件实际路径
+        do_file_rel_path = template_info.get("file_path")
+        do_file_abs_path = self.base_dir / do_file_rel_path
+        
+        if not do_file_abs_path.exists():
+            raise FileNotFoundError(f"找不到模板对应的 .do 文件：{do_file_abs_path}")
+            
+        # 3. 读取 .do 模板内容
+        with open(do_file_abs_path, 'r', encoding='utf-8') as f:
+            template_code = f.read()
+            
+        # 4. 组装最终脚本 (头部 + 换行 + 模板代码)
+        final_script = f"{header_code}\n\n{template_code}"
+        
+        return final_script
+
+
+# ==========================================
+# 本地测试模块 (直接运行此文件可看效果)
+# ==========================================
+if __name__ == "__main__":
+    # 为了让测试跑通，我们在这个脚本里动态创建一下必须的文件夹和文件
+    test_base = Path(__file__).parent / "templates"
+    test_base.mkdir(exist_ok=True)
+    (test_base / "regress").mkdir(exist_ok=True)
+    
+    # 动态写入一个 registry.json 用于测试
+    test_registry = {
+        "ols_basic": {
+            "name": "基础 OLS 回归",
+            "file_path": "regress/ols_basic.do"
+        }
+    }
+    with open(test_base / "registry.json", "w", encoding="utf-8") as f:
+        json.dump(test_registry, f, ensure_ascii=False, indent=4)
+        
+    # 动态写入一个 ols_basic.do 用于测试
+    test_do_code = """* 模板：基础 OLS 回归
+* 执行回归并输出稳健标准误
+regress $y $x $controls, vce(robust)
+est store model_ols
+esttab model_ols using "ols_result.rtf", replace
+"""
+    with open(test_base / "regress" / "ols_basic.do", "w", encoding="utf-8") as f:
+        f.write(test_do_code)
+
+    print("✅ 成功创建测试用的 templates 目录和文件！\n")
+
+    # ---------------- 模拟流水线执行 ----------------
+    print("=== 开始组装测试 ===")
+    
+    # 1. 模拟 logic_center.py 传过来的头部代码
+    mock_header = """* ==========================================
+* Text2Stata 自动生成 - 变量定义与环境设置
+* ==========================================
+global y "salary"
+global x "education"
+global controls "age gender city"
+* 当前识别为横截面数据，无需 xtset/tsset
+* =========================================="""
+
+    # 2. 实例化管理器并执行组装
+    try:
+        manager = TemplateManager()
+        final_do_file_content = manager.assemble_script("ols_basic", mock_header)
+        
+        print("🎉 组装成功！最终将被发送给 Stata 执行的代码如下：\n")
+        print("-------------------------------------------------")
+        print(final_do_file_content)
+        print("-------------------------------------------------")
+        
+    except Exception as e:
+        print(f"❌ 发生错误: {e}")

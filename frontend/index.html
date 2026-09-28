@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text2Stata - 智能实证分析代理</title>
+    <style>
+        :root {
+            --primary: #26343f;
+            --accent: #2f7fbf;
+            --bg: #f3f6f8;
+            --surface: #ffffff;
+            --border: #dfe7ee;
+            --text: #24313b;
+            --muted: #6f7f8c;
+            --danger: #b33a3a;
+            --success: #287a52;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        }
+
+        .sidebar {
+            width: 330px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+        }
+
+        .logo-area {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            padding: 20px;
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .logo-area h1 { font-size: 1.18rem; margin-bottom: 6px; }
+        .logo-area p { font-size: 0.82rem; opacity: 0.82; }
+
+        .section {
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .section-title {
+            margin-bottom: 14px;
+            color: var(--muted);
+            font-size: 0.86rem;
+            font-weight: 700;
+        }
+
+        .upload-btn, .send-btn, .small-btn {
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+            transition: opacity 0.2s, background 0.2s;
+        }
+
+        .upload-btn {
+            display: block;
+            width: 100%;
+            padding: 11px 12px;
+            background: var(--accent);
+            color: #fff;
+            text-align: center;
+        }
+
+        .upload-btn:hover, .send-btn:hover, .small-btn:hover { opacity: 0.9; }
+        #fileInput { display: none; }
+
+        .field { margin-bottom: 14px; }
+        .field label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--primary);
+            font-size: 0.83rem;
+            font-weight: 700;
+        }
+
+        .select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: #fbfcfd;
+            color: var(--text);
+            outline: none;
+        }
+
+        .select:focus { border-color: var(--accent); }
+
+        .main {
+            min-width: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 26px;
+        }
+
+        .message {
+            max-width: 92%;
+            padding: 15px 18px;
+            border-radius: 8px;
+            line-height: 1.55;
+            box-shadow: 0 2px 7px rgba(31, 45, 61, 0.06);
+        }
+
+        .msg-system {
+            align-self: flex-start;
+            background: var(--surface);
+            border-left: 4px solid var(--accent);
+        }
+
+        .msg-user {
+            align-self: flex-end;
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 14px;
+            align-items: flex-end;
+            padding: 18px 26px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+        }
+
+        .input-box {
+            min-height: 58px;
+            max-height: 145px;
+            flex: 1;
+            resize: vertical;
+            padding: 13px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            font-size: 1rem;
+            outline: none;
+        }
+
+        .input-box:focus { border-color: var(--accent); }
+
+        .send-btn {
+            height: 58px;
+            padding: 0 24px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 0.96rem;
+        }
+
+        .send-btn:disabled {
+            background: #aab5bd;
+            cursor: not-allowed;
+        }
+
+        .plan-box, .result-box {
+            display: grid;
+            gap: 10px;
+        }
+
+        .kv {
+            display: grid;
+            grid-template-columns: 120px minmax(0, 1fr);
+            gap: 10px;
+            font-size: 0.92rem;
+        }
+
+        .kv span:first-child {
+            color: var(--muted);
+            font-weight: 700;
+        }
+
+        .code-box, .log-box {
+            max-height: 360px;
+            overflow: auto;
+            padding: 12px;
+            border-radius: 6px;
+            background: #17212b;
+            color: #dbe6ee;
+            white-space: pre-wrap;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.84rem;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 6px;
+        }
+
+        .small-btn {
+            padding: 9px 13px;
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .small-btn.secondary {
+            background: #e8edf1;
+            color: var(--primary);
+        }
+
+        .download-link {
+            display: inline-block;
+            margin: 5px 8px 0 0;
+            padding: 8px 12px;
+            border-radius: 5px;
+            background: var(--accent);
+            color: #fff;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
+        .status-line { color: var(--muted); font-size: 0.88rem; }
+        .ok { color: var(--success); font-weight: 700; }
+        .error { color: var(--danger); font-weight: 700; }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="logo-area">
+            <h1>Text2Stata</h1>
+            <p>面向经管实证分析的 Stata 代理</p>
+        </div>
+
+        <div class="section">
+            <label for="fileInput" class="upload-btn" id="uploadBtnText">上传 .dta 数据文件</label>
+            <input type="file" id="fileInput" accept=".dta" onchange="handleFileUpload(event)">
+            <div id="uploadStatus" class="status-line" style="margin-top: 10px; text-align: center;"></div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">AI 配置</div>
+            <div class="field">
+                <label>API 线路</label>
+                <select id="sel-line" class="select">
+                    <option value="line1">线路 1</option>
+                    <option value="line2">线路 2</option>
+                    <option value="line3">线路 3</option>
+                </select>
+            </div>
+            <div class="field" style="margin-bottom: 0;">
+                <label>模型</label>
+                <select id="sel-model" class="select">
+                    <option value="gpt-3.5-turbo">GPT-3.5-Turbo</option>
+                    <option value="gpt-4o-mini">GPT-4o-Mini</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="deepseek-v3.2">DeepSeek-V3.2</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="section" id="varSettings" style="display: none;">
+            <div class="section-title">变量预设</div>
+            <div class="field">
+                <label>被解释变量 ($y)</label>
+                <select id="sel-y" class="select"></select>
+            </div>
+            <div class="field">
+                <label>核心解释变量 ($x)</label>
+                <select id="sel-x" class="select"></select>
+            </div>
+            <div class="field">
+                <label>个体标识 ($id)</label>
+                <select id="sel-id" class="select"></select>
+            </div>
+            <div class="field">
+                <label>时间标识 ($time)</label>
+                <select id="sel-time" class="select"></select>
+            </div>
+            <div class="field">
+                <label>控制变量 ($controls)</label>
+                <select id="sel-controls" class="select" multiple style="height: 240px;"></select>
+                <div class="status-line" style="margin-top: 5px;">按住 Ctrl 或 Cmd 可多选</div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main">
+        <div class="chat" id="chatScreen">
+            <div class="message msg-system">
+                你好，我是 Text2Stata。请先上传 .dta 文件，然后用自然语言描述你想做的分析。我会先生成分析计划，确认后再执行 Stata。
+            </div>
+        </div>
+
+        <div class="input-area">
+            <textarea class="input-box" id="queryInput" placeholder="例如：研究 ESG 分数对 ROA 的影响，控制公司规模和杠杆，做双向固定效应回归。" onkeydown="handleEnter(event)"></textarea>
+            <button class="send-btn" id="sendBtn" onclick="submitAnalysis()">生成计划</button>
+        </div>
+    </main>
+
+    <script>
+        const state = {
+            file_id: null,
+            schema: [],
+            isProcessing: false,
+            pendingPlan: null,
+            currentTaskId: null
+        };
+
+        const API_BASE = "http://127.0.0.1:5000/api";
+
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const btnText = document.getElementById("uploadBtnText");
+            const status = document.getElementById("uploadStatus");
+            btnText.innerText = "正在读取...";
+            status.textContent = "解析数据文件中";
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                const response = await fetch(`${API_BASE}/upload`, { method: "POST", body: formData });
+                const data = await response.json();
+                if (data.status === "success") {
+                    state.file_id = data.file_id;
+                    state.schema = data.schema;
+                    status.innerHTML = `<span class="ok">解析成功：${escapeHtml(file.name)}</span>`;
+                    btnText.innerText = "重新选择数据";
+                    fillSelects(data.schema);
+                    document.getElementById("varSettings").style.display = "block";
+                    appendMessage("system", `数据 <b>${escapeHtml(file.name)}</b> 已就绪。现在可以预设变量或直接输入分析需求。`);
+                } else {
+                    status.innerHTML = `<span class="error">${escapeHtml(data.message)}</span>`;
+                    btnText.innerText = "上传失败，重新选择";
+                }
+            } catch (error) {
+                status.innerHTML = `<span class="error">无法连接后端，请确认服务已经启动。</span>`;
+                btnText.innerText = "上传失败，重新选择";
+            } finally {
+                event.target.value = "";
+            }
+        }
+
+        function fillSelects(schema) {
+            const options = `<option value="">让 AI 自动识别</option>` +
+                schema.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)} (${escapeHtml(v.label || "无标签")})</option>`).join("");
+            ["sel-y", "sel-x", "sel-id", "sel-time"].forEach(id => {
+                document.getElementById(id).innerHTML = options;
+            });
+            document.getElementById("sel-controls").innerHTML =
+                schema.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)}</option>`).join("");
+        }
+
+        function collectPayload(query) {
+            return {
+                query,
+                file_id: state.file_id,
+                schema: state.schema,
+                manual_mappings: {
+                    y: document.getElementById("sel-y").value,
+                    x: document.getElementById("sel-x").value,
+                    id: document.getElementById("sel-id").value,
+                    time: document.getElementById("sel-time").value,
+                    controls: Array.from(document.getElementById("sel-controls").selectedOptions).map(o => o.value)
+                },
+                ai_settings: {
+                    line: document.getElementById("sel-line").value,
+                    model: document.getElementById("sel-model").value
+                }
+            };
+        }
+
+        async function submitAnalysis() {
+            if (state.isProcessing) return;
+            if (!state.file_id) {
+                alert("请先上传数据文件。");
+                return;
+            }
+
+            const input = document.getElementById("queryInput");
+            const query = input.value.trim();
+            if (!query) return;
+
+            setLoading(true, "生成中");
+            appendMessage("user", escapeHtml(query));
+
+            try {
+                const response = await fetch(`${API_BASE}/plan`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(collectPayload(query))
+                });
+                const plan = await response.json();
+                if (plan.status !== "success") {
+                    appendMessage("system", `<span class="error">${escapeHtml(plan.message || "生成分析计划失败。")}</span>`);
+                    return;
+                }
+                state.pendingPlan = plan;
+                renderPlan(plan);
+            } catch (error) {
+                appendMessage("system", `<span class="error">请求失败，请检查后端服务。</span>`);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function renderPlan(plan) {
+            const mapping = plan.variable_mapping || {};
+            const controls = Array.isArray(mapping.controls) ? mapping.controls.join(", ") : (mapping.controls || "");
+            const html = `
+                <div class="plan-box">
+                    <b>分析计划待确认</b>
+                    <div class="kv"><span>模板</span><div><code>${escapeHtml(plan.selected_template)}</code> ${escapeHtml(plan.template_info?.name || "")}</div></div>
+                    <div class="kv"><span>数据结构</span><div>${escapeHtml(plan.data_structure)}</div></div>
+                    <div class="kv"><span>因变量</span><div>${escapeHtml(mapping.y || "未识别")}</div></div>
+                    <div class="kv"><span>核心变量</span><div>${escapeHtml(mapping.x || "未识别")}</div></div>
+                    <div class="kv"><span>控制变量</span><div>${escapeHtml(controls || "无")}</div></div>
+                    <div class="kv"><span>个体/时间</span><div>${escapeHtml(mapping.id || "无")} / ${escapeHtml(mapping.time || "无")}</div></div>
+                    <div class="kv"><span>AI 理由</span><div>${escapeHtml(plan.ai_reasoning || "")}</div></div>
+                    <details>
+                        <summary>查看将执行的 Stata 代码</summary>
+                        <pre class="code-box">${escapeHtml(plan.do_preview || "")}</pre>
+                    </details>
+                    <div class="actions">
+                        <button class="small-btn" onclick="confirmPlan()">确认并执行</button>
+                        <button class="small-btn secondary" onclick="cancelPlan()">取消</button>
+                    </div>
+                </div>`;
+            appendMessage("system", html);
+        }
+
+        function cancelPlan() {
+            state.pendingPlan = null;
+            appendMessage("system", "已取消本次分析计划。你可以调整变量或重新输入需求。");
+        }
+
+        async function confirmPlan() {
+            if (!state.pendingPlan || state.isProcessing) return;
+            setLoading(true, "执行中");
+            try {
+                const response = await fetch(`${API_BASE}/analyze`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ plan: state.pendingPlan })
+                });
+                const data = await response.json();
+                if (data.status !== "queued") {
+                    appendMessage("system", `<span class="error">${escapeHtml(data.message || "任务提交失败。")}</span>`);
+                    setLoading(false);
+                    return;
+                }
+                state.currentTaskId = data.task_id;
+                state.pendingPlan = null;
+                appendMessage("system", `任务已提交：<code>${escapeHtml(data.task_id)}</code>。正在等待 Stata 返回结果。`);
+                pollTask(data.task_id);
+            } catch (error) {
+                appendMessage("system", `<span class="error">任务提交失败，请检查后端服务。</span>`);
+                setLoading(false);
+            }
+        }
+
+        async function pollTask(taskId) {
+            try {
+                const response = await fetch(`${API_BASE}/task/${taskId}`);
+                const task = await response.json();
+                if (["queued", "running"].includes(task.status)) {
+                    setTimeout(() => pollTask(taskId), 1500);
+                    return;
+                }
+
+                const result = task.result || task;
+                renderResult(result);
+                if (state.currentTaskId === taskId) {
+                    state.currentTaskId = null;
+                    setLoading(false);
+                }
+            } catch (error) {
+                appendMessage("system", `<span class="error">查询任务状态失败。</span>`);
+                if (state.currentTaskId === taskId) {
+                    state.currentTaskId = null;
+                    setLoading(false);
+                }
+            }
+        }
+
+        function renderResult(data) {
+            let html = `<div class="result-box">`;
+            if (data.ai_reasoning) {
+                html += `<div><b>AI 策略：</b>${escapeHtml(data.ai_reasoning)}</div>`;
+            }
+            if (data.selected_template) {
+                html += `<div><b>模板：</b><code>${escapeHtml(data.selected_template)}</code></div>`;
+            }
+
+            if (data.status === "success") {
+                html += `<p class="ok">执行成功，用时 ${escapeHtml(data.time_cost || 0)} 秒。</p>`;
+                if (data.files && data.files.length > 0) {
+                    html += `<div><b>结果下载：</b><br>`;
+                    data.files.forEach(file => {
+                        html += `<a href="${API_BASE}/download/${encodeURIComponent(file)}" class="download-link">下载 ${escapeHtml(file)}</a>`;
+                    });
+                    html += `</div>`;
+                }
+            } else {
+                html += `<p class="error">执行失败：${escapeHtml(data.message || data.error_code || "未知错误")}</p>`;
+            }
+
+            if (data.log) {
+                html += `<pre class="log-box">${escapeHtml(data.log)}</pre>`;
+            }
+            html += `</div>`;
+            appendMessage("system", html);
+        }
+
+        function appendMessage(role, html) {
+            const chat = document.getElementById("chatScreen");
+            const div = document.createElement("div");
+            div.className = `message msg-${role}`;
+            div.innerHTML = html;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function setLoading(loading, text = "生成计划") {
+            state.isProcessing = loading;
+            document.getElementById("sendBtn").disabled = loading;
+            document.getElementById("sendBtn").innerText = loading ? text : "生成计划";
+            document.getElementById("queryInput").disabled = loading;
+        }
+
+        function handleEnter(event) {
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submitAnalysis();
+            }
+        }
+    </script>
+</body>
+</html>

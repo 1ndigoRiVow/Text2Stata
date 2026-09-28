@@ -1,0 +1,10 @@
+.env
+*.pyc
+__pycache__/
+.venv/
+.tmp/
+backend/uploads/
+backend/workspace/
+workspace/
+*.log
+.workbuddy/
