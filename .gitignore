@@ -9,3 +9,7 @@ workspace/
 *.log
 .workbuddy/
 ~$*
+
+# 评测产物与本地凭据（不入库）
+eval/*/results/
+eval/*/.env.local
