@@ -13,6 +13,7 @@ from werkzeug.utils import secure_filename
 from core.config import CORS_ORIGINS, FLASK_DEBUG, MAX_UPLOAD_MB, STATA_PATH
 from core.llm_agent import LLMAgent
 from core.logic_center import generate_stata_header
+from core.result_auditor import ResultAuditor
 from core.stata_worker import StataWorker
 from core.template_manager import TemplateManager
 
@@ -29,6 +30,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 template_mgr = TemplateManager()
 worker = StataWorker(stata_path=STATA_PATH)
+auditor = ResultAuditor()
 
 executor = ThreadPoolExecutor(max_workers=2)
 tasks = {}
@@ -181,6 +183,13 @@ def _execute_task(task_id, plan):
         execution_result["selected_template"] = plan.get("selected_template")
         execution_result["variable_mapping"] = plan.get("variable_mapping")
         execution_result["data_structure"] = build["data_structure"]
+
+        # 执行层（跑没跑通）与校验层（结果像不像话）是两件事，这里是二者的交汇点。
+        # 只有执行成功时才做结果体检 —— 失败时日志本身就不完整，体检会产生噪声警告。
+        execution_result["audit"] = _audit_result(
+            plan.get("selected_template"), execution_result
+        )
+
         _set_task(task_id, status=execution_result.get("status", "finished"), result=execution_result)
     except Exception as exc:
         _set_task(
@@ -188,6 +197,38 @@ def _execute_task(task_id, plan):
             status="error",
             result={"status": "error", "message": f"任务执行失败: {exc}"},
         )
+
+
+def _audit_result(selected_template, execution_result):
+    """
+    对执行结果做合理性体检。**只提醒，不改变任务成败** —— 结果照常可下载。
+
+    边界说明：本层只做客观自相矛盾检查（样本量为 0、系数无量纲、区间倒挂、
+    聚类过少等），不做计量学推理。凡是需要领域判断的检查都不属于这里。
+    """
+    if execution_result.get("status") != "success":
+        return {"status": "skipped", "warning_count": 0, "warnings": []}
+
+    try:
+        report = auditor.audit(selected_template, execution_result.get("log", ""))
+        # 磁盘级复核：日志里的数字是转述，产物文件才是原始事实
+        extra = auditor.audit_artifacts(execution_result.get("files"), worker.workspace)
+        if extra:
+            merged = {item["code"]: item for item in report["warnings"]}
+            for item in extra:
+                merged.setdefault(item["code"], item)
+            report["warnings"] = list(merged.values())
+            report["warning_count"] = len(report["warnings"])
+            report["status"] = "warning"
+        return report
+    except Exception as exc:
+        # 体检本身出错绝不能连累主流程 —— 用户该拿到结果还是要拿到
+        return {
+            "status": "error",
+            "warning_count": 0,
+            "warnings": [],
+            "message": f"结果体检未能完成（不影响本次执行结果）：{exc}",
+        }
 
 
 @app.route("/api/upload", methods=["POST"])

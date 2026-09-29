@@ -233,6 +233,58 @@
         .status-line { color: var(--muted); font-size: 0.88rem; }
         .ok { color: var(--success); font-weight: 700; }
         .error { color: var(--danger); font-weight: 700; }
+
+        /* 结果体检：只提醒不阻断，所以用"提示卡"而不是错误样式 */
+        .audit-box {
+            margin-top: 10px;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #e6d5a8;
+        }
+
+        .audit-head {
+            padding: 9px 12px;
+            background: #fdf6e3;
+            color: #8a6d1f;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .audit-item {
+            padding: 9px 12px;
+            border-top: 1px solid #f0e6cc;
+            background: #fffdf7;
+        }
+
+        .audit-item .audit-title {
+            font-weight: 700;
+            color: #8a6d1f;
+            font-size: 0.9rem;
+        }
+
+        .audit-item.high .audit-title { color: var(--danger); }
+        .audit-item.medium .audit-title { color: #a5761a; }
+        .audit-item.low .audit-title { color: var(--muted); }
+
+        .audit-item .audit-detail {
+            margin-top: 3px;
+            font-size: 0.87rem;
+            line-height: 1.5;
+        }
+
+        .audit-item .audit-evidence {
+            margin-top: 4px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.8rem;
+            color: var(--muted);
+            word-break: break-all;
+        }
+
+        .audit-pass {
+            margin-top: 8px;
+            font-size: 0.88rem;
+            color: var(--success);
+        }
     </style>
 </head>
 <body>
@@ -527,11 +579,43 @@
                 html += `<p class="error">执行失败：${escapeHtml(data.message || data.error_code || "未知错误")}</p>`;
             }
 
+            html += renderAudit(data.audit);
+
             if (data.log) {
                 html += `<pre class="log-box">${escapeHtml(data.log)}</pre>`;
             }
             html += `</div>`;
             appendMessage("system", html);
+        }
+
+        // 结果体检报告：跑通了不等于结果可用，把异常摆出来但不禁用下载
+        function renderAudit(audit) {
+            if (!audit) return "";
+
+            if (audit.status === "warning" && audit.warnings && audit.warnings.length > 0) {
+                let html = `<div class="audit-box">`;
+                html += `<div class="audit-head">结果体检：发现 ${audit.warning_count} 项需要确认（不影响本次结果，请自行判断）</div>`;
+                audit.warnings.forEach(item => {
+                    html += `<div class="audit-item ${escapeHtml(item.level || "low")}">`;
+                    html += `<div class="audit-title">${escapeHtml(item.title)}</div>`;
+                    html += `<div class="audit-detail">${escapeHtml(item.detail)}</div>`;
+                    if (item.evidence) {
+                        html += `<div class="audit-evidence">依据：${escapeHtml(item.evidence)}</div>`;
+                    }
+                    html += `</div>`;
+                });
+                html += `</div>`;
+                return html;
+            }
+
+            if (audit.status === "passed") {
+                return `<div class="audit-pass">结果体检通过，未发现自相矛盾的指标。</div>`;
+            }
+
+            if (audit.message) {
+                return `<div class="audit-item low"><div class="audit-detail">${escapeHtml(audit.message)}</div></div>`;
+            }
+            return "";
         }
 
         function appendMessage(role, html) {
