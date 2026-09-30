@@ -13,3 +13,9 @@ workspace/
 # 评测产物与本地凭据（不入库）
 eval/*/results/
 eval/*/.env.local
+
+# 完整数据集不入库（含商业数据库导出内容，仅本地保留）
+# 仓库内公开的是随机抽样的演示样本 testdata.dta
+testdata_full.dta
+*.dta.bak
+
