@@ -2,14 +2,14 @@ import json
 
 import requests
 
-from core.config import API_LINES, API_URL, DEFAULT_MODEL
+from core import config
 
 
 AVAILABLE_MODELS = [
-    "gpt-3.5-turbo",
-    "gpt-4o-mini",
     "gpt-4o",
+    "gpt-4o-mini",
     "deepseek-v3.2",
+    "gpt-3.5-turbo",
 ]
 
 
@@ -22,22 +22,27 @@ class LLMAgent:
     """
 
     def __init__(self, current_line="line1", current_model=None):
-        self.api_url = API_URL
+        # 走 config 的属性访问而不是 import 常量：
+        # 设置面板改完 key/模型后要立刻生效，不能用模块导入时的那份旧快照。
+        self.api_url = config.API_URL
         self.max_tokens = 8000
         self.timeout = 120
         self.switch_line(current_line)
-        self.switch_model(current_model or DEFAULT_MODEL)
+        self.switch_model(current_model or config.DEFAULT_MODEL)
 
     def switch_line(self, line_name):
-        if line_name in API_LINES and API_LINES[line_name]:
+        key = config.API_LINES.get(line_name, "")
+        if key:
             self.current_line_name = line_name
-            self.api_key = API_LINES[line_name]
+            self.api_key = key
             return
-        env_name = f"TEXT2STATA_API_KEY_{line_name.upper()}"
-        raise ValueError(f"API line '{line_name}' is not configured. Set {env_name} in .env.")
+        raise ValueError(
+            f"API 线路「{line_name}」还没有配置密钥。请在设置面板里填入，"
+            f"或设置环境变量 TEXT2STATA_API_KEY_{line_name.upper()}。"
+        )
 
     def switch_model(self, model_name):
-        self.model = model_name or DEFAULT_MODEL
+        self.model = model_name or config.DEFAULT_MODEL
 
     def parse_intent(self, user_query, schema_info, template_registry):
         system_prompt = f"""

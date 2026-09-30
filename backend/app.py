@@ -3,14 +3,13 @@ import os
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 import pyreadstat
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-from core.config import CORS_ORIGINS, FLASK_DEBUG, MAX_UPLOAD_MB, STATA_PATH
+from core import config, paths, stata_detect
 from core.llm_agent import LLMAgent
 from core.logic_center import generate_stata_header
 from core.result_auditor import ResultAuditor
@@ -18,19 +17,27 @@ from core.stata_worker import StataWorker
 from core.template_manager import TemplateManager
 
 
-BASE_DIR = Path(__file__).resolve().parent
-UPLOAD_FOLDER = BASE_DIR / "uploads"
-WORKSPACE_DIR = BASE_DIR / "workspace"
-UPLOAD_FOLDER.mkdir(exist_ok=True)
-WORKSPACE_DIR.mkdir(exist_ok=True)
+config.bootstrap()
+paths.ensure_dirs()
+
+UPLOAD_FOLDER = paths.UPLOAD_DIR
+WORKSPACE_DIR = paths.WORKSPACE_DIR
+FRONTEND_DIR = paths.FRONTEND_DIR
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = config.MAX_UPLOAD_MB * 1024 * 1024
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 template_mgr = TemplateManager()
-worker = StataWorker(stata_path=STATA_PATH)
+worker = StataWorker(stata_path=config.STATA_PATH or None, workspace=WORKSPACE_DIR)
 auditor = ResultAuditor()
+
+
+def apply_runtime_config():
+    """设置面板改完配置后，把变动同步到已实例化的组件上。"""
+    app.config["MAX_CONTENT_LENGTH"] = config.MAX_UPLOAD_MB * 1024 * 1024
+    worker.stata_path = config.STATA_PATH or worker._detect_default_stata()
+
 
 executor = ThreadPoolExecutor(max_workers=2)
 tasks = {}
@@ -318,6 +325,91 @@ def download_result(filename):
     return send_from_directory(WORKSPACE_DIR, safe_name, as_attachment=True)
 
 
+# --------------------------------------------------------------------------
+# 配置：读取 / 保存 / Stata 探测
+#
+# 打包版没有 .env 可以手改，设置面板就是唯一入口，
+# 所以这几个接口必须能拿到当前生效值、也能写回磁盘。
+# --------------------------------------------------------------------------
+def _stata_status():
+    ok, message = worker.check_environment()
+    return {"ok": ok, "path": worker.stata_path, "message": message}
+
+
+def _config_payload():
+    return {
+        "status": "success",
+        "config": config.public_config(),
+        "llm_ready": config.has_usable_llm(),
+        "stata": _stata_status(),
+    }
+
+
+@app.route("/api/config", methods=["GET"])
+def read_config():
+    return jsonify(_config_payload())
+
+
+@app.route("/api/config", methods=["POST"])
+def update_config():
+    patch = request.get_json(silent=True)
+    if not isinstance(patch, dict):
+        return jsonify({"status": "error", "message": "配置格式不正确。"}), 400
+    try:
+        config.save_config(patch)
+        apply_runtime_config()
+    except Exception as exc:
+        return jsonify({"status": "error", "message": f"保存配置失败：{exc}"}), 500
+
+    payload = _config_payload()
+    payload["message"] = "配置已保存并生效。"
+    return jsonify(payload)
+
+
+@app.route("/api/stata/detect", methods=["GET"])
+def detect_stata():
+    return jsonify({"status": "success", "candidates": stata_detect.detect()})
+
+
+# --------------------------------------------------------------------------
+# 前端托管
+#
+# 打包版的目标是"双击就打开浏览器"，不能再让用户自己去磁盘里找 index.html。
+# --------------------------------------------------------------------------
+@app.route("/")
+def index_page():
+    if not (FRONTEND_DIR / "index.html").exists():
+        return (
+            jsonify({"status": "error", "message": f"找不到前端文件：{FRONTEND_DIR / 'index.html'}"}),
+            500,
+        )
+    return send_from_directory(FRONTEND_DIR, "index.html")
+
+
+@app.route("/<path:filename>")
+def frontend_asset(filename):
+    if filename.startswith("api/"):
+        return jsonify({"status": "error", "message": "接口不存在。"}), 404
+
+    root = FRONTEND_DIR.resolve()
+    candidate = (root / filename).resolve()
+    # 防目录穿越：解析后的路径必须仍在 frontend 目录内
+    if root not in candidate.parents:
+        return jsonify({"status": "error", "message": "非法路径。"}), 403
+    if not candidate.is_file():
+        return jsonify({"status": "error", "message": "资源不存在。"}), 404
+    return send_from_directory(FRONTEND_DIR, filename)
+
+
 if __name__ == "__main__":
-    print("Text2Stata backend is running at http://127.0.0.1:5000")
-    app.run(host="0.0.0.0", port=5000, debug=FLASK_DEBUG)
+    apply_runtime_config()
+    print("=" * 62)
+    print(f"  Text2Stata 已启动 → http://{config.HOST}:{config.PORT}")
+    print(f"  {paths.describe()}")
+    ok, message = worker.check_environment()
+    print(f"  Stata：{message}")
+    if not config.has_usable_llm():
+        print("  提示：还没有配置大模型密钥，请在网页右上角「设置」中填写。")
+    print("=" * 62)
+    app.run(host=config.HOST, port=config.PORT, debug=config.FLASK_DEBUG)
+

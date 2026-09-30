@@ -112,21 +112,47 @@ Stata 的执行失败有很多种不说话的方式：授权过期、可执行�
 
 ## 快速开始
 
-### 环境要求
+### 方式一：解压即用（Windows，推荐）
+
+下载 `Text2Stata-windows.zip`，解压后双击 `Text2Stata.exe`。
+
+控制台会打印访问地址，浏览器会自动打开。不需要装 Python，不需要配依赖。首次运行会直接跳到设置面板，填两样东西：
+
+1. **Stata 路径** —— 通常不用手填，点「自动探测」会从注册表的文件关联里找出来
+2. **API Key** —— 任何兼容 OpenAI `/v1/chat/completions` 的服务都可以
+
+数据与配置存在 `%APPDATA%\Text2Stata\`，程序放在哪、覆盖升级都不会丢。
+
+> 只提供 Windows 包。Mac / Linux 用户走下面的源码方式。
+> 打包不含 Stata —— 你需要自备授权，这是产品定位决定的，不是缺陷。
+
+自己打包：
+
+```bash
+pip install -r requirements-build.txt
+python packaging/build.py
+```
+
+### 方式二：从源码运行
+
+#### 环境要求
 
 - Python 3.10+
 - 本机安装 Stata（15 及以上；SE 版即可），并能以命令行方式调用
 - 一个 OpenAI 兼容的 `/v1/chat/completions` 接口
 
-### 安装
+#### 安装
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 配置
+#### 配置
 
-在项目根目录建 `.env`（已被 gitignore，不要提交）：
+两种方式，任选：
+
+- **在网页里配**（推荐）：启动后点侧栏「设置」，改完立即生效，写入 `backend/config.json`（已 gitignore）
+- **用 `.env`**：在项目根目录建 `.env`（已被 gitignore，不要提交）
 
 ```ini
 # 模型接口
@@ -134,22 +160,33 @@ TEXT2STATA_API_URL=https://your-endpoint/v1/chat/completions
 TEXT2STATA_API_KEY_LINE1=sk-...
 TEXT2STATA_DEFAULT_MODEL=gpt-4o
 
-# Stata 可执行文件
+# Stata 可执行文件（留空则自动探测）
 TEXT2STATA_STATA_PATH=C:\Program Files\StataNow19\StataSE-64.exe
 
 # 可选
 TEXT2STATA_MAX_UPLOAD_MB=100
-TEXT2STATA_CORS_ORIGINS=http://127.0.0.1:5000,http://localhost:5000,null
+TEXT2STATA_HOST=127.0.0.1
+TEXT2STATA_PORT=5000
 TEXT2STATA_FLASK_DEBUG=false
 ```
 
-### 启动
+优先级：**环境变量 > `config.json` > 内置默认值**。开发模式下 `.env` 优先级最高，网页里改的值会被它覆盖 —— 这是故意的，免得配置来源打架。
+
+#### 启动
+
+```bash
+python launcher.py
+```
+
+自动选空闲端口、起服务、打开浏览器。也可以只起后端：
 
 ```bash
 cd backend && python app.py
 ```
 
-服务起在 `http://127.0.0.1:5000`。前端是单页 HTML，直接用浏览器打开 `frontend/index.html` 即可（CORS 已放行 `null` 来源，支持 `file://` 直开）。
+服务默认监听 `127.0.0.1:5000`。前端由后端直接托管，浏览器打开 `http://127.0.0.1:5000` 即可。旧的 `file://` 直开方式仍然可用 —— 前端会自动判断走同源还是回落到本机 5000。
+
+> 监听地址刻意默认 `127.0.0.1` 而不是 `0.0.0.0`：这是给一个人用的桌面工具，没有理由把端口暴露到局域网。
 
 ### 试一下
 
@@ -163,11 +200,15 @@ cd backend && python app.py
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
+| GET | `/` | 前端页面（后端直接托管） |
 | POST | `/api/upload` | 上传 `.dta`，返回 `file_id` 与数据 Schema |
 | POST | `/api/plan` | 自然语言需求 → 结构化分析计划（不执行） |
 | POST | `/api/analyze` | 提交执行任务，返回 `task_id` |
 | GET | `/api/task/<task_id>` | 轮询任务状态与结果 |
 | GET | `/api/download/<filename>` | 下载分析产物 |
+| GET | `/api/config` | 读取当前配置（API Key 只回传掩码） |
+| POST | `/api/config` | 保存配置，立即生效 |
+| GET | `/api/stata/detect` | 探测本机所有 Stata 可执行文件 |
 | GET | `/api/health` | 健康检查 |
 
 任务状态：`pending` → `running` → `success` / `failed` / `error`。
@@ -201,10 +242,13 @@ python tests/test_result_audit.py
 ## 目录结构
 
 ```
+launcher.py                 启动器（打包入口）
 backend/
-  app.py                    Flask 入口，6 个接口
+  app.py                    Flask 入口，接口与前端托管
   core/
-    config.py               配置与 .env 加载
+    config.py               配置分层（环境变量 > config.json > 默认值）
+    paths.py                开发/打包两种模式的路径解析
+    stata_detect.py         Stata 可执行文件自动探测
     llm_agent.py            意图解析
     logic_center.py         数据结构判定与头部生成
     template_manager.py     模板注册表与脚本装配
@@ -213,7 +257,12 @@ backend/
     templates/              模板库（registry.json 为唯一注册表）
   tests/                    回归测试
 frontend/
-  index.html                单页前端
+  index.html                单页前端（含设置面板）
+packaging/
+  text2stata.spec           PyInstaller 配置
+  build.py                  打包脚本
+docs/
+  DEPLOYMENT.md             本地版 / 云端版部署方案
 eval/jev_routing/           旁路评测：意图路由能力评估（不进主链路）
 流程图/系统架构.md            架构图
 需求文档.docx                项目需求与背景
@@ -233,8 +282,15 @@ testdata.dta                演示数据（抽样样本）
 **已知不足**
 
 - 结果校验层的阈值（最小样本量、VIF 上限、最小聚类数）是拍出来的常量，还没有用真实运行数据标定。
-- 前端 API 地址硬编码为 `127.0.0.1:5000`。
+- 任务状态存在进程内存里，重启即丢，也没有并发与配额控制。
 - 模板覆盖集中在横截面与面板模型，工具变量、断点回归、合成控制等还未纳入。
+- 一键包只提供 Windows 版本。
+
+**关于云端版**
+
+`docs/DEPLOYMENT.md` 写了两个版本（本地 / 云端）怎么切、以及为什么这么切。
+
+要点：Stata 的商业授权决定了「多人共享的云上 Stata」需要网络授权（要询价，量级五位数美元），所以云端版走的是**云端只做调度、执行留在用户自己机器上**的路子 —— 不用额外花钱，用户数据也不出本机。
 
 **值得一提**
 

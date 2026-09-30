@@ -5,6 +5,12 @@ import time
 import uuid
 from pathlib import Path
 
+try:
+    from . import paths, stata_detect
+except ImportError:  # 允许直接运行本文件
+    import paths  # type: ignore
+    import stata_detect  # type: ignore
+
 
 # Stata 把 do-file 跑到结尾时会打印这个标记；授权失败/未执行时不会出现。
 _COMPLETION_MARKER = re.compile(r"end of do-file", re.IGNORECASE)
@@ -38,9 +44,10 @@ class StataWorker:
     # 会被当作"本次任务产物"收集的扩展名
     ARTIFACT_SUFFIXES = (".rtf", ".doc", ".docx", ".csv", ".png", ".gph")
 
-    def __init__(self, stata_path=None):
+    def __init__(self, stata_path=None, workspace=None):
         # 1. 确定工作目录 (用于存放临时的 do 文件和 log 文件)
-        self.workspace = Path(__file__).parent.parent / "workspace"
+        #    打包后必须显式传入 —— 默认值算出来的是解压临时目录，进程退出就被清掉。
+        self.workspace = Path(workspace) if workspace else paths.WORKSPACE_DIR
         self.workspace.mkdir(parents=True, exist_ok=True)
 
         # 2. 配置 Stata 执行文件路径
@@ -49,10 +56,14 @@ class StataWorker:
         self.stata_path = stata_path or self._detect_default_stata()
 
     def _detect_default_stata(self):
-        """简单探测系统默认的 stata 命令 (这是一个 fallback 机制)"""
+        """没配路径时兜底探测：先问注册表/安装目录，再退回系统 PATH 上的命令名。"""
+        guessed = stata_detect.best_guess()
+        if guessed:
+            return guessed
         if os.name == "nt":  # Windows
             return "StataMP-64.exe"
         return "stata-mp"
+
 
     def check_environment(self):
         """

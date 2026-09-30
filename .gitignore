@@ -10,6 +10,14 @@ workspace/
 .workbuddy/
 ~$*
 
+# 开发模式下设置面板会把配置写到这里，里面有 API key
+backend/config.json
+
+# 打包产物
+build/
+dist/
+*.spec.bak
+
 # 评测产物与本地凭据（不入库）
 eval/*/results/
 eval/*/.env.local

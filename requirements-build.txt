@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# 仅打包时需要，运行不需要
+pyinstaller>=6.10

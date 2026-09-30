@@ -285,6 +285,116 @@
             font-size: 0.88rem;
             color: var(--success);
         }
+
+        /* 环境状态徽章 */
+        .badge {
+            display: inline-block;
+            margin-right: 6px;
+            padding: 2px 8px;
+            border-radius: 9px;
+            font-size: 0.76rem;
+            font-weight: 700;
+        }
+
+        .badge.ok { background: #e4f4ec; color: var(--success); }
+        .badge.warn { background: #fdf3e0; color: #96690f; }
+
+        .settings-link {
+            display: block;
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #fbfcfd;
+            color: var(--primary);
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        .settings-link:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* 设置面板 */
+        .settings-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 30;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(38, 52, 63, 0.45);
+        }
+
+        .settings-backdrop.open { display: flex; }
+
+        .settings-panel {
+            width: 100%;
+            max-width: 580px;
+            max-height: 88vh;
+            overflow-y: auto;
+            border-radius: 10px;
+            background: var(--surface);
+            box-shadow: 0 16px 42px rgba(15, 25, 35, 0.26);
+        }
+
+        .settings-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 22px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .settings-head h2 { font-size: 1.02rem; color: var(--primary); }
+
+        .settings-body { padding: 20px 22px 4px; }
+
+        .settings-foot {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 22px 20px;
+        }
+
+        .settings-hint {
+            margin-top: 5px;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: var(--muted);
+            word-break: break-all;
+        }
+
+        .text-input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: #fbfcfd;
+            color: var(--text);
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .text-input:focus { border-color: var(--accent); }
+
+        .path-row { display: flex; gap: 8px; }
+        .path-row .text-input { flex: 1; }
+
+        .icon-btn {
+            padding: 7px 13px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #fbfcfd;
+            color: var(--primary);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
     </style>
 </head>
 <body>
@@ -345,6 +455,12 @@
                 <div class="status-line" style="margin-top: 5px;">按住 Ctrl 或 Cmd 可多选</div>
             </div>
         </div>
+
+        <div class="section">
+            <div class="section-title">运行环境</div>
+            <div id="envStatus" class="status-line" style="margin-bottom: 12px;">正在检查…</div>
+            <button class="settings-link" onclick="openSettings()">设置</button>
+        </div>
     </aside>
 
     <main class="main">
@@ -360,6 +476,57 @@
         </div>
     </main>
 
+    <div class="settings-backdrop" id="settingsBackdrop">
+        <div class="settings-panel">
+            <div class="settings-head">
+                <h2>设置</h2>
+                <button class="icon-btn" onclick="closeSettings()">关闭</button>
+            </div>
+
+            <div class="settings-body">
+                <div class="field">
+                    <label>Stata 可执行文件</label>
+                    <div class="path-row">
+                        <input type="text" class="text-input" id="cfg-stata" placeholder="留空则自动探测">
+                        <button class="icon-btn" onclick="detectStata()">自动探测</button>
+                    </div>
+                    <div class="settings-hint" id="stataHint"></div>
+                </div>
+
+                <div class="field">
+                    <label>模型接口地址</label>
+                    <input type="text" class="text-input" id="cfg-api-url" placeholder="https://example.com/v1/chat/completions">
+                    <div class="settings-hint">任何兼容 OpenAI <code>/v1/chat/completions</code> 的服务都可以，包括各家第三方中转。</div>
+                </div>
+
+                <div class="field">
+                    <label>API Key</label>
+                    <input type="password" class="text-input" id="cfg-key1" style="margin-bottom: 8px;">
+                    <input type="password" class="text-input" id="cfg-key2" style="margin-bottom: 8px;">
+                    <input type="password" class="text-input" id="cfg-key3">
+                    <div class="settings-hint" id="keyHint">留空表示不修改已保存的密钥；密钥只存在本机，不会上传。</div>
+                </div>
+
+                <div class="field">
+                    <label>默认模型</label>
+                    <input type="text" class="text-input" id="cfg-model" placeholder="gpt-4o">
+                </div>
+
+                <div class="field">
+                    <label>单个数据文件上限（MB）</label>
+                    <input type="number" class="text-input" id="cfg-maxmb" min="1" max="2048">
+                </div>
+
+                <div class="settings-hint" id="cfgPathHint" style="margin-bottom: 14px;"></div>
+            </div>
+
+            <div class="settings-foot">
+                <button class="small-btn" onclick="saveSettings()">保存</button>
+                <span class="status-line" id="settingsStatus"></span>
+            </div>
+        </div>
+    </div>
+
     <script>
         const state = {
             file_id: null,
@@ -369,7 +536,11 @@
             currentTaskId: null
         };
 
-        const API_BASE = "http://127.0.0.1:5000/api";
+        // 打包版由后端直接托管前端，走同源即可；
+        // 开发时可能用 file:// 直开，那种情况回落到本机 5000。
+        const API_BASE = (location.protocol === "http:" || location.protocol === "https:")
+            ? `${location.origin}/api`
+            : "http://127.0.0.1:5000/api";
 
         function escapeHtml(value) {
             return String(value ?? "")
@@ -640,6 +811,150 @@
                 submitAnalysis();
             }
         }
+
+        // ------------------------------------------------------------------
+        // 设置面板
+        // 打包版没有 .env 可以手改，这里是配置 Stata 路径与模型密钥的唯一入口。
+        // ------------------------------------------------------------------
+
+        function openSettings() {
+            document.getElementById("settingsBackdrop").classList.add("open");
+            loadSettings();
+        }
+
+        function closeSettings() {
+            document.getElementById("settingsBackdrop").classList.remove("open");
+        }
+
+        function renderEnv(data) {
+            const stata = (data && data.stata) || {};
+            const chips = [
+                stata.ok
+                    ? `<span class="badge ok">Stata 就绪</span>`
+                    : `<span class="badge warn">Stata 未就绪</span>`,
+                data && data.llm_ready
+                    ? `<span class="badge ok">模型已配置</span>`
+                    : `<span class="badge warn">模型未配置</span>`
+            ];
+            document.getElementById("envStatus").innerHTML = chips.join("");
+            document.getElementById("stataHint").textContent = stata.message || "";
+        }
+
+        function syncModelSelect(model) {
+            if (!model) return;
+            const select = document.getElementById("sel-model");
+            if (!Array.from(select.options).some(option => option.value === model)) {
+                const option = document.createElement("option");
+                option.value = model;
+                option.textContent = model;
+                select.appendChild(option);
+            }
+            select.value = model;
+        }
+
+        async function loadSettings() {
+            const status = document.getElementById("settingsStatus");
+            status.textContent = "读取中…";
+            try {
+                const response = await fetch(`${API_BASE}/config`);
+                const data = await response.json();
+                const cfg = data.config || {};
+
+                document.getElementById("cfg-stata").value = cfg.stata_path || "";
+                document.getElementById("cfg-api-url").value = cfg.api_url || "";
+                document.getElementById("cfg-model").value = cfg.default_model || "";
+                document.getElementById("cfg-maxmb").value = cfg.max_upload_mb || 100;
+                document.getElementById("cfgPathHint").textContent =
+                    `配置文件：${cfg.config_file || "（未知）"}`;
+
+                const keys = cfg.keys || [];
+                ["cfg-key1", "cfg-key2", "cfg-key3"].forEach((id, index) => {
+                    const input = document.getElementById(id);
+                    input.value = "";
+                    const info = keys[index];
+                    input.placeholder = info && info.set
+                        ? `已保存：${info.hint}`
+                        : `线路 ${index + 1}${index === 0 ? "" : "（可选）"}`;
+                });
+
+                renderEnv(data);
+                status.textContent = "";
+            } catch (error) {
+                status.textContent = `读取失败：${error.message}`;
+            }
+        }
+
+        async function detectStata() {
+            const status = document.getElementById("settingsStatus");
+            status.textContent = "探测中…";
+            try {
+                const response = await fetch(`${API_BASE}/stata/detect`);
+                const data = await response.json();
+                const list = data.candidates || [];
+                if (list.length === 0) {
+                    status.textContent = "没有找到 Stata，请手动填写 exe 的完整路径。";
+                    return;
+                }
+                document.getElementById("cfg-stata").value = list[0].path;
+                const rest = list.slice(1).map(item => item.path);
+                status.textContent = rest.length
+                    ? `共找到 ${list.length} 个，已填入第 1 个。其余：${rest.join("；")}`
+                    : `已填入：${list[0].path}（来源：${list[0].source}）`;
+            } catch (error) {
+                status.textContent = `探测失败：${error.message}`;
+            }
+        }
+
+        async function saveSettings() {
+            const status = document.getElementById("settingsStatus");
+            status.textContent = "保存中…";
+            const payload = {
+                stata_path: document.getElementById("cfg-stata").value.trim(),
+                api_url: document.getElementById("cfg-api-url").value.trim(),
+                default_model: document.getElementById("cfg-model").value.trim(),
+                max_upload_mb: document.getElementById("cfg-maxmb").value,
+                api_keys: {
+                    line1: document.getElementById("cfg-key1").value.trim(),
+                    line2: document.getElementById("cfg-key2").value.trim(),
+                    line3: document.getElementById("cfg-key3").value.trim()
+                }
+            };
+            try {
+                const response = await fetch(`${API_BASE}/config`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (data.status !== "success") {
+                    throw new Error(data.message || "保存失败");
+                }
+                renderEnv(data);
+                await loadSettings();
+                syncModelSelect(data.config && data.config.default_model);
+                status.textContent = "已保存并生效";
+                setTimeout(() => { status.textContent = ""; }, 2600);
+            } catch (error) {
+                status.textContent = `保存失败：${error.message}`;
+            }
+        }
+
+        document.addEventListener("keydown", event => {
+            if (event.key === "Escape") closeSettings();
+        });
+
+        (async function init() {
+            try {
+                const response = await fetch(`${API_BASE}/config`);
+                const data = await response.json();
+                renderEnv(data);
+                syncModelSelect(data.config && data.config.default_model);
+                if (new URLSearchParams(location.search).has("settings")) openSettings();
+            } catch (error) {
+                document.getElementById("envStatus").innerHTML =
+                    `<span class="badge warn">后端未连接</span>`;
+            }
+        })();
     </script>
 </body>
 </html>
