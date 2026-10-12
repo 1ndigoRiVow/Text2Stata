@@ -27,3 +27,10 @@ eval/*/.env.local
 testdata_full.dta
 *.dta.bak
 
+# 云端/代理本地数据（SQLite、产物、代理令牌、代理存档的 .dta）
+cloud_data/
+agent_data/
+
+# Git Bash 下 2>nul 会生成字面文件 nul（Windows 保留设备名，删不掉），永不入库
+nul
+
