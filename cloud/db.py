@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -101,8 +102,17 @@ def utcnow() -> str:
 
 class Database:
     def __init__(self, path):
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # ":memory:" 走共享缓存内存库（测试用）：
+        # 每条连接各自独立，但只要锚定连接不断开，它们看到的是同一份数据。
+        self._memory = str(path) == ":memory:"
+        if self._memory:
+            self._uri = f"file:t2s_{uuid.uuid4().hex[:12]}?mode=memory&cache=shared"
+            self._anchor = self._connect()  # 锚定连接：它一关，内存库就蒸发
+        else:
+            self._uri = None
+            self._anchor = None
+            self.path = Path(path)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         # DDL 只需要跑一次；用锁防多线程同时初始化
         conn = self._connect()
         try:
@@ -112,7 +122,10 @@ class Database:
         self._write_lock = threading.Lock()
 
     def _connect(self):
-        conn = sqlite3.connect(str(self.path), timeout=10)
+        if self._memory:
+            conn = sqlite3.connect(self._uri, uri=True, timeout=10)
+        else:
+            conn = sqlite3.connect(str(self.path), timeout=10)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         return conn

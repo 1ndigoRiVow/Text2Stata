@@ -28,7 +28,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from flask import Flask, g, jsonify, request, send_file, session
+from flask import Flask, g, jsonify, request, send_file, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -264,6 +264,23 @@ def create_app(data_dir=None, db_path=None) -> Flask:
     # ------------------------------------------------------------------
     # 3.4 任务（用户侧）
     # ------------------------------------------------------------------
+    @app.get("/api/templates")
+    @login_required
+    def list_templates():
+        """模板注册表：前端渲染"选模板 → 填变量映射"表单的依据。"""
+        registry = plans.template_mgr.get_all_templates()
+        templates = {
+            key: {
+                "name": info.get("name", key),
+                "description": info.get("description", ""),
+                "required_globals": info.get("required_globals") or [],
+                "optional_globals": info.get("optional_globals") or [],
+            }
+            for key, info in registry.items()
+        }
+        return jsonify({"status": "success", "templates": templates})
+
+
     @app.post("/api/tasks")
     @login_required
     def create_task():
@@ -479,6 +496,28 @@ def create_app(data_dir=None, db_path=None) -> Flask:
     @app.get("/api/health")
     def health():
         return jsonify({"status": "ok", "service": "text2stata-cloud"})
+
+    # ------------------------------------------------------------------
+    # 前端托管（同源，不需要 CORS）
+    # ------------------------------------------------------------------
+    static_dir = Path(__file__).resolve().parent / "static"
+
+    @app.get("/")
+    def index_page():
+        return send_from_directory(static_dir, "index.html")
+
+    @app.get("/<path:filename>")
+    def static_asset(filename):
+        if filename.startswith("api/"):
+            return jsonify({"status": "error", "message": "接口不存在。"}), 404
+        root = static_dir.resolve()
+        candidate = (root / filename).resolve()
+        # 防目录穿越：解析后的路径必须仍在 static 目录内
+        if root not in candidate.parents:
+            return jsonify({"status": "error", "message": "非法路径。"}), 403
+        if not candidate.is_file():
+            return jsonify({"status": "error", "message": "资源不存在。"}), 404
+        return send_from_directory(static_dir, filename)
 
     if bootstrap_invite:
         print("=" * 62)

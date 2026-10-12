@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Text2Stata 云端版</title>
+<style>
+    :root {
+        --primary: #26343f;
+        --accent: #2f7fbf;
+        --bg: #f3f6f8;
+        --surface: #ffffff;
+        --border: #dfe7ee;
+        --text: #24313b;
+        --muted: #6f7f8c;
+        --danger: #b33a3a;
+        --success: #287a52;
+        --warning-bg: #fff8e1;
+        --warning-border: #e6c76a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+        background: var(--bg); color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        min-height: 100vh;
+    }
+    button {
+        font: inherit; cursor: pointer; border: 1px solid var(--border);
+        background: var(--surface); color: var(--text);
+        padding: 7px 14px; border-radius: 6px;
+    }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.primary:hover { opacity: 0.9; color: #fff; }
+    button.danger { color: var(--danger); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    input, select {
+        font: inherit; padding: 7px 10px; border: 1px solid var(--border);
+        border-radius: 6px; background: #fff; color: var(--text); width: 100%;
+    }
+    input:focus, select:focus { outline: 2px solid rgba(47,127,191,.25); border-color: var(--accent); }
+    label { display: block; font-size: .82rem; color: var(--muted); margin: 12px 0 5px; }
+    .muted { color: var(--muted); font-size: .84rem; }
+    .hidden { display: none !important; }
+
+    /* ---------- 登录/注册 ---------- */
+    .auth-wrap { max-width: 380px; margin: 10vh auto; background: var(--surface);
+        border: 1px solid var(--border); border-radius: 10px; padding: 32px; }
+    .auth-wrap h1 { font-size: 1.3rem; margin-bottom: 4px; }
+    .auth-tabs { display: flex; gap: 8px; margin: 18px 0 6px; }
+    .auth-tabs button { flex: 1; }
+    .auth-tabs button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .auth-wrap button.submit { width: 100%; margin-top: 18px; }
+    .form-error { color: var(--danger); font-size: .84rem; margin-top: 10px; min-height: 1.2em; }
+
+    /* ---------- 主框架 ---------- */
+    .topbar { background: var(--primary); color: #fff; padding: 12px 24px;
+        display: flex; align-items: center; gap: 18px; }
+    .topbar h1 { font-size: 1.05rem; }
+    .topbar .spacer { flex: 1; }
+    .topbar .who { font-size: .84rem; opacity: .85; }
+    .layout { display: flex; min-height: calc(100vh - 49px); }
+    .nav { width: 150px; background: var(--surface); border-right: 1px solid var(--border);
+        padding: 14px 0; flex-shrink: 0; }
+    .nav button { display: block; width: 100%; border: none; border-radius: 0;
+        text-align: left; padding: 11px 22px; background: none; color: var(--text); }
+    .nav button.active { color: var(--accent); font-weight: 700;
+        border-right: 3px solid var(--accent); background: #eef5fb; }
+    .content { flex: 1; padding: 24px; max-width: 980px; }
+    .panel { background: var(--surface); border: 1px solid var(--border);
+        border-radius: 10px; padding: 20px 22px; margin-bottom: 18px; }
+    .panel h2 { font-size: 1rem; margin-bottom: 4px; }
+    .panel h2 + .muted { margin-bottom: 8px; }
+
+    /* ---------- 任务 ---------- */
+    .task-row { display: flex; align-items: center; gap: 12px; padding: 11px 4px;
+        border-bottom: 1px solid var(--border); cursor: pointer; }
+    .task-row:hover { background: #f7fafc; }
+    .task-row .t-title { flex: 1; min-width: 0; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap; }
+    .badge { font-size: .76rem; padding: 2px 9px; border-radius: 999px; flex-shrink: 0; }
+    .badge.queued, .badge.dispatched { background: #e8eef4; color: var(--muted); }
+    .badge.running { background: #dbeafe; color: #1d4ed8; }
+    .badge.succeeded { background: #dcf2e5; color: var(--success); }
+    .badge.failed, .badge.error { background: #fbe3e3; color: var(--danger); }
+    .detail-block { margin-top: 14px; }
+    .detail-block h3 { font-size: .88rem; margin-bottom: 6px; }
+    pre { background: #f7fafc; border: 1px solid var(--border); border-radius: 6px;
+        padding: 12px; font-size: .78rem; overflow: auto; max-height: 320px;
+        white-space: pre-wrap; word-break: break-all; }
+    .audit-card { border-radius: 6px; padding: 10px 14px; font-size: .86rem; }
+    .audit-card.passed { background: #ecf7f0; border: 1px solid #bfe3cd; color: var(--success); }
+    .audit-card.warning { background: var(--warning-bg); border: 1px solid var(--warning-border); }
+    .audit-card ul { margin: 6px 0 0 18px; }
+    .artifact-link { display: inline-block; margin: 4px 10px 0 0; font-size: .86rem; }
+
+    /* ---------- 新建任务 ---------- */
+    .tpl-desc { font-size: .82rem; color: var(--muted); margin-top: 5px; min-height: 1.2em; }
+    .mapping-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 22px; }
+    .controls-box { max-height: 150px; overflow: auto; border: 1px solid var(--border);
+        border-radius: 6px; padding: 8px 10px; }
+    .controls-box label { display: inline-flex; align-items: center; gap: 6px;
+        margin: 3px 14px 3px 0; font-size: .84rem; color: var(--text); }
+    .controls-box input { width: auto; }
+
+    /* ---------- 数据/代理 ---------- */
+    .kv-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    .kv-table th, .kv-table td { text-align: left; padding: 9px 8px;
+        border-bottom: 1px solid var(--border); }
+    .kv-table th { color: var(--muted); font-size: .8rem; }
+    .agent-status { font-size: .84rem; padding: 8px 12px; border-radius: 6px; margin-top: 10px; }
+    .agent-status.online { background: #ecf7f0; color: var(--success); }
+    .agent-status.offline { background: #fbe3e3; color: var(--danger); }
+    .token-modal { position: fixed; inset: 0; background: rgba(0,0,0,.35);
+        display: flex; align-items: center; justify-content: center; z-index: 10; }
+    .token-box { background: #fff; border-radius: 10px; padding: 26px; max-width: 480px; }
+    .token-value { font-family: Consolas, monospace; background: #f7fafc;
+        border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+        word-break: break-all; margin: 12px 0; font-size: .88rem; }
+    .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+        background: var(--primary); color: #fff; padding: 10px 22px; border-radius: 8px;
+        font-size: .88rem; z-index: 20; }
+</style>
+</head>
+<body>
+
+<!-- ==================== 登录 / 注册 ==================== -->
+<div id="authView" class="auth-wrap hidden">
+    <h1>Text2Stata 云端版</h1>
+    <p class="muted">自然语言 → Stata 实证分析。数据留在你自己的电脑上。</p>
+    <div class="auth-tabs">
+        <button id="tabLogin" class="active" onclick="switchAuthTab('login')">登录</button>
+        <button id="tabRegister" onclick="switchAuthTab('register')">注册</button>
+    </div>
+    <label>用户名</label>
+    <input id="authUsername" autocomplete="username">
+    <label>密码</label>
+    <input id="authPassword" type="password" autocomplete="current-password">
+    <div id="inviteRow" class="hidden">
+        <label>邀请码（向站点管理员索取）</label>
+        <input id="authInvite">
+    </div>
+    <div class="form-error" id="authError"></div>
+    <button class="primary submit" onclick="submitAuth()">进入</button>
+</div>
+
+<!-- ==================== 主界面 ==================== -->
+<div id="appView" class="hidden">
+    <div class="topbar">
+        <h1>Text2Stata 云端版</h1>
+        <span class="muted" style="color:#9fb3c8">执行在你自己的电脑上，数据不出本机</span>
+        <div class="spacer"></div>
+        <span class="who" id="whoami"></span>
+        <button onclick="logout()">退出</button>
+    </div>
+    <div class="layout">
+        <div class="nav">
+            <button data-page="tasks" class="active" onclick="showPage('tasks')">任务</button>
+            <button data-page="new" onclick="showPage('new')">新建任务</button>
+            <button data-page="data" onclick="showPage('data')">数据集</button>
+            <button data-page="agents" onclick="showPage('agents')">执行代理</button>
+            <button data-page="settings" onclick="showPage('settings')">设置</button>
+        </div>
+        <div class="content">
+
+            <!-- 任务列表 + 详情 -->
+            <div id="page-tasks" class="page">
+                <div class="panel">
+                    <h2>任务列表</h2>
+                    <p class="muted">每 3 秒自动刷新。点击任务查看脚本、日志、体检与产物。</p>
+                    <div id="taskList"><p class="muted">加载中…</p></div>
+                </div>
+                <div class="panel hidden" id="taskDetailPanel">
+                    <h2>任务详情</h2>
+                    <div id="taskDetail"></div>
+                </div>
+            </div>
+
+            <!-- 新建任务 -->
+            <div id="page-new" class="page hidden">
+                <div class="panel">
+                    <h2>新建任务</h2>
+                    <p class="muted">选数据集和模板，再把变量填进模板要求的位置。
+                        自然语言智能解析将在站点配置大模型密钥后开放。</p>
+                    <label>数据集</label>
+                    <select id="ntDataset" onchange="renderMappingForm()"></select>
+                    <label>分析模板</label>
+                    <select id="ntTemplate" onchange="renderMappingForm()"></select>
+                    <div class="tpl-desc" id="ntTplDesc"></div>
+                    <label>需求备注（可选，仅作记录）</label>
+                    <input id="ntQuery" placeholder="例如：研发对全要素生产率的影响">
+                    <div class="mapping-grid" id="mappingForm"></div>
+                    <div class="form-error" id="ntError"></div>
+                    <button class="primary" style="margin-top:16px" onclick="submitTask()">提交任务</button>
+                </div>
+            </div>
+
+            <!-- 数据集 -->
+            <div id="page-data" class="page hidden">
+                <div class="panel">
+                    <h2>上传数据</h2>
+                    <p class="muted">.dta 只上传到你本机的执行代理，云端只登记变量名与标签。</p>
+                    <div id="agentStatus" class="agent-status offline">正在探测本机代理…</div>
+                    <label>选择 .dta 文件</label>
+                    <input type="file" id="dtaFile" accept=".dta">
+                    <button class="primary" style="margin-top:12px" onclick="uploadDataset()">上传到本机代理</button>
+                    <div class="form-error" id="uploadError"></div>
+                </div>
+                <div class="panel">
+                    <h2>已登记的数据集</h2>
+                    <div id="datasetList"><p class="muted">加载中…</p></div>
+                </div>
+            </div>
+
+            <!-- 代理管理 -->
+            <div id="page-agents" class="page hidden">
+                <div class="panel">
+                    <h2>创建执行代理</h2>
+                    <p class="muted">代理是跑在你电脑上的小程序，负责真正执行 Stata。
+                        创建后把令牌填进代理配置（python -m agent.agent init）。</p>
+                    <label>代理名称</label>
+                    <input id="agentName" placeholder="例如：我的工作电脑">
+                    <button class="primary" style="margin-top:12px" onclick="createAgent()">创建并生成令牌</button>
+                </div>
+                <div class="panel">
+                    <h2>我的代理</h2>
+                    <div id="agentList"><p class="muted">加载中…</p></div>
+                </div>
+            </div>
+
+            <!-- 设置 -->
+            <div id="page-settings" class="page hidden">
+                <div class="panel">
+                    <h2>产物回传策略</h2>
+                    <p class="muted">回归表、图表等产物要不要回传到云端？</p>
+                    <label><input type="radio" name="am" value="cloud" style="width:auto">
+                        回传云端（默认）——网页上直接查看下载，换台设备也能拿结果</label>
+                    <label><input type="radio" name="am" value="local" style="width:auto">
+                        只留本机——数据完全不出我的电脑，网页只显示日志与体检</label>
+                    <button class="primary" style="margin-top:12px" onclick="saveSettings()">保存</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- 令牌一次性展示 -->
+<div id="tokenModal" class="token-modal hidden">
+    <div class="token-box">
+        <h2 style="font-size:1rem">代理令牌（只显示这一次）</h2>
+        <p class="muted" style="margin-top:6px">云端不存原文，关了就拿不回来，请立即复制。</p>
+        <div class="token-value" id="tokenValue"></div>
+        <button class="primary" onclick="copyToken()">复制</button>
+        <button onclick="closeTokenModal()">我已保存，关闭</button>
+    </div>
+</div>
+
+<script>
+const API = '';
+const AGENT_API = 'http://127.0.0.1:5100';
+const ROLE_LABELS = { y: '被解释变量 Y', x: '核心解释变量 X', id: '个体 ID', time: '时间变量', controls: '控制变量（可多选）' };
+const STATUS_LABELS = { queued: '排队中', dispatched: '已派发', running: '执行中',
+    succeeded: '成功', failed: '失败', error: '错误' };
+
+let me = null, templates = {}, datasets = [], tasksTimer = null;
+
+/* ---------------- 基础 ---------------- */
+async function api(path, opts = {}) {
+    const resp = await fetch(API + path, {
+        headers: { 'Content-Type': 'application/json' }, ...opts,
+    });
+    const body = await resp.json().catch(() => ({}));
+    return { status: resp.status, body };
+}
+function toast(msg) {
+    const el = document.createElement('div');
+    el.className = 'toast'; el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2600);
+}
+function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g,
+        c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* ---------------- 认证 ---------------- */
+let authMode = 'login';
+function switchAuthTab(mode) {
+    authMode = mode;
+    document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
+    document.getElementById('tabRegister').classList.toggle('active', mode === 'register');
+    document.getElementById('inviteRow').classList.toggle('hidden', mode === 'login');
+}
+async function submitAuth() {
+    const payload = {
+        username: document.getElementById('authUsername').value.trim(),
+        password: document.getElementById('authPassword').value,
+    };
+    if (authMode === 'register') payload.invite_code = document.getElementById('authInvite').value.trim();
+    const { status, body } = await api('/api/auth/' + authMode, {
+        method: 'POST', body: JSON.stringify(payload),
+    });
+    if (status >= 400) {
+        document.getElementById('authError').textContent = body.message || '操作失败';
+        return;
+    }
+    me = body.user;
+    enterApp();
+}
+async function logout() {
+    await api('/api/auth/logout', { method: 'POST' });
+    location.reload();
+}
+
+/* ---------------- 主界面 ---------------- */
+function enterApp() {
+    document.getElementById('authView').classList.add('hidden');
+    document.getElementById('appView').classList.remove('hidden');
+    document.getElementById('whoami').textContent = me.username;
+    loadTasks(); loadDatasets(); loadAgents(); loadTemplates(); loadSettings();
+    tasksTimer = setInterval(loadTasks, 3000);
+}
+function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+    document.getElementById('page-' + name).classList.remove('hidden');
+    document.querySelectorAll('.nav button').forEach(b =>
+        b.classList.toggle('active', b.dataset.page === name));
+    if (name === 'data') probeAgent();
+}
+
+/* ---------------- 任务 ---------------- */
+async function loadTasks() {
+    const { body } = await api('/api/tasks');
+    const list = document.getElementById('taskList');
+    if (!body.tasks || !body.tasks.length) {
+        list.innerHTML = '<p class="muted" style="padding:8px 4px">还没有任务，去「新建任务」提交一个。</p>';
+        return;
+    }
+    list.innerHTML = body.tasks.map(t => `
+        <div class="task-row" onclick="showTaskDetail('${t.id}')">
+            <span class="badge ${t.status}">${STATUS_LABELS[t.status] || t.status}</span>
+            <span class="t-title">${esc(t.query || t.selected_template)}</span>
+            <span class="muted">${esc((t.created_at || '').replace('T', ' ').slice(5, 16))}</span>
+        </div>`).join('');
+}
+async function showTaskDetail(taskId) {
+    const { body } = await api('/api/tasks/' + taskId);
+    if (!body.task) return;
+    const t = body.task;
+    document.getElementById('taskDetailPanel').classList.remove('hidden');
+
+    let auditHtml = '';
+    if (t.audit) {
+        if (t.audit.status === 'warning') {
+            auditHtml = `<div class="audit-card warning">结果体检：${t.audit.warning_count} 条提醒（不阻断，结果可下载）
+                <ul>${t.audit.warnings.map(w => `<li>${esc(w.message)}</li>`).join('')}</ul></div>`;
+        } else if (t.audit.status === 'passed') {
+            auditHtml = '<div class="audit-card passed">结果体检通过，未发现异常。</div>';
+        }
+    }
+    const artifacts = (t.artifacts || []).map(a =>
+        `<a class="artifact-link" href="/api/tasks/${t.task_id}/artifacts/${encodeURIComponent(a.filename)}">
+            ⬇ ${esc(a.filename)}（${(a.size / 1024).toFixed(1)} KB）</a>`).join('');
+
+    document.getElementById('taskDetail').innerHTML = `
+        <p><span class="badge ${t.status}">${STATUS_LABELS[t.status] || t.status}</span>
+           <span class="muted" style="margin-left:8px">${esc(t.task_id)} ｜ 模板 ${esc(t.selected_template)}</span></p>
+        ${t.result && t.result.message ? `<p style="margin-top:8px">${esc(t.result.message)}</p>` : ''}
+        ${t.result && t.result.diagnosis ? `<p class="muted">${esc(t.result.diagnosis)}</p>` : ''}
+        <div class="detail-block">${auditHtml}</div>
+        ${artifacts ? `<div class="detail-block"><h3>产物</h3>${artifacts}</div>` : ''}
+        ${!artifacts.length && t.status === 'succeeded' && !t.artifact_upload
+            ? '<div class="detail-block muted">产物按你的设置保留在本机，请到执行代理的工作目录取。</div>' : ''}
+        <div class="detail-block"><h3>生成的 .do 脚本</h3><pre>${esc(t.do_script)}</pre></div>
+        <div class="detail-block"><h3>Stata 日志</h3>
+            <pre id="logPre">加载中…</pre></div>`;
+    const logResp = await fetch('/api/tasks/' + taskId + '/log');
+    const logText = await logResp.text();
+    const pre = document.getElementById('logPre');
+    if (pre) pre.textContent = logText || '（暂无日志）';
+}
+
+/* ---------------- 新建任务 ---------------- */
+async function loadTemplates() {
+    const { body } = await api('/api/templates');
+    templates = body.templates || {};
+    renderNewTaskForm();
+}
+function renderNewTaskForm() {
+    const dsSel = document.getElementById('ntDataset');
+    dsSel.innerHTML = datasets.map(d =>
+        `<option value="${d.id}">${esc(d.name)}（${d.schema.length} 个变量）</option>`).join('')
+        || '<option value="">（先在「数据集」页上传数据）</option>';
+    const tpSel = document.getElementById('ntTemplate');
+    tpSel.innerHTML = Object.entries(templates).map(([key, t]) =>
+        `<option value="${key}">${esc(t.name)}</option>`).join('');
+    renderMappingForm();
+}
+function renderMappingForm() {
+    const tplKey = document.getElementById('ntTemplate').value;
+    const tpl = templates[tplKey];
+    const ds = datasets.find(d => d.id === document.getElementById('ntDataset').value);
+    document.getElementById('ntTplDesc').textContent = tpl ? tpl.description : '';
+    const form = document.getElementById('mappingForm');
+    if (!tpl || !ds) { form.innerHTML = ''; return; }
+
+    const options = ds.schema.map(v =>
+        `<option value="${esc(v.name)}">${esc(v.name)}${v.label ? ' ｜ ' + esc(v.label) : ''}</option>`).join('');
+    let html = '';
+    for (const role of [...tpl.required_globals, ...tpl.optional_globals]) {
+        const required = tpl.required_globals.includes(role);
+        const label = ROLE_LABELS[role] || role;
+        if (role === 'controls') {
+            html += `<div style="grid-column:1/-1"><label>${label}${required ? ' *' : '（可选）'}</label>
+                <div class="controls-box" id="mf_controls">
+                ${ds.schema.map(v => `<label><input type="checkbox" value="${esc(v.name)}">
+                    ${esc(v.name)}${v.label ? '｜' + esc(v.label) : ''}</label>`).join('')}
+                </div></div>`;
+        } else {
+            html += `<div><label>${label}${required ? ' *' : '（可选）'}</label>
+                <select id="mf_${role}"><option value="">（不选）</option>${options}</select></div>`;
+        }
+    }
+    form.innerHTML = html;
+}
+async function submitTask() {
+    const dataset_id = document.getElementById('ntDataset').value;
+    const selected_template = document.getElementById('ntTemplate').value;
+    const tpl = templates[selected_template];
+    const err = document.getElementById('ntError');
+    if (!dataset_id || !tpl) { err.textContent = '请先选择数据集和模板。'; return; }
+
+    const mapping = {};
+    for (const role of [...tpl.required_globals, ...tpl.optional_globals]) {
+        if (role === 'controls') {
+            mapping.controls = [...document.querySelectorAll('#mf_controls input:checked')]
+                .map(cb => cb.value);
+        } else {
+            const el = document.getElementById('mf_' + role);
+            if (el && el.value) mapping[role] = el.value;
+        }
+    }
+    const { status, body } = await api('/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+            dataset_id, selected_template, variable_mapping: mapping,
+            query: document.getElementById('ntQuery').value.trim(),
+        }),
+    });
+    if (status >= 400) { err.textContent = body.message || '提交失败'; return; }
+    err.textContent = '';
+    toast('任务已入队，代理领取后即开始执行');
+    showPage('tasks');
+    loadTasks();
+}
+
+/* ---------------- 数据集 ---------------- */
+async function loadDatasets() {
+    const { body } = await api('/api/datasets');
+    datasets = body.datasets || [];
+    const list = document.getElementById('datasetList');
+    list.innerHTML = datasets.length ? `<table class="kv-table">
+        <tr><th>名称</th><th>变量数</th><th>登记时间</th></tr>
+        ${datasets.map(d => `<tr><td>${esc(d.name)}</td><td>${d.schema.length}</td>
+            <td class="muted">${esc((d.created_at || '').replace('T', ' ').slice(0, 16))}</td></tr>`).join('')}
+        </table>` : '<p class="muted" style="padding:8px 4px">还没有数据集。</p>';
+    renderNewTaskForm();
+}
+async function probeAgent() {
+    const el = document.getElementById('agentStatus');
+    try {
+        const resp = await fetch(AGENT_API + '/status');
+        const body = await resp.json();
+        const stata = body.stata && body.stata.ok ? 'Stata 正常' : 'Stata 未就绪';
+        el.className = 'agent-status online';
+        el.textContent = `本机代理在线 ｜ ${stata} ｜ 云端连接${body.cloud && body.cloud.ok ? '正常' : '异常'}`;
+    } catch {
+        el.className = 'agent-status offline';
+        el.textContent = '探测不到本机代理（127.0.0.1:5100）。请先在你的电脑上启动执行代理。';
+    }
+}
+async function uploadDataset() {
+    const file = document.getElementById('dtaFile').files[0];
+    const err = document.getElementById('uploadError');
+    if (!file) { err.textContent = '请先选择文件。'; return; }
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const resp = await fetch(AGENT_API + '/datasets', { method: 'POST', body: fd });
+        const body = await resp.json();
+        if (!resp.ok) { err.textContent = body.message || '上传失败'; return; }
+        err.textContent = '';
+        toast(`已登记：${body.schema.length} 个变量`);
+        loadDatasets();
+    } catch {
+        err.textContent = '连不上本机代理，请确认代理已启动。';
+    }
+}
+
+/* ---------------- 代理管理 ---------------- */
+async function loadAgents() {
+    const { body } = await api('/api/agents');
+    const list = document.getElementById('agentList');
+    const agents = body.agents || [];
+    list.innerHTML = agents.length ? `<table class="kv-table">
+        <tr><th>名称</th><th>最近在线</th><th>创建时间</th><th></th></tr>
+        ${agents.map(a => `<tr><td>${esc(a.name)}</td>
+            <td class="muted">${esc(a.last_seen ? a.last_seen.replace('T', ' ').slice(0, 19) : '从未连接')}</td>
+            <td class="muted">${esc((a.created_at || '').replace('T', ' ').slice(0, 16))}</td>
+            <td><button class="danger" onclick="revokeAgent('${a.id}')">吊销</button></td></tr>`).join('')}
+        </table>` : '<p class="muted" style="padding:8px 4px">还没有代理。</p>';
+}
+async function createAgent() {
+    const name = document.getElementById('agentName').value.trim() || '未命名代理';
+    const { status, body } = await api('/api/agents', {
+        method: 'POST', body: JSON.stringify({ name }),
+    });
+    if (status >= 400) { toast(body.message || '创建失败'); return; }
+    document.getElementById('tokenValue').textContent = body.token;
+    document.getElementById('tokenModal').classList.remove('hidden');
+    loadAgents();
+}
+function copyToken() {
+    navigator.clipboard.writeText(document.getElementById('tokenValue').textContent)
+        .then(() => toast('已复制'));
+}
+function closeTokenModal() {
+    document.getElementById('tokenModal').classList.add('hidden');
+}
+async function revokeAgent(agentId) {
+    if (!confirm('吊销后该代理立即失效，其未完成的任务会终止。确定？')) return;
+    await api('/api/agents/' + agentId, { method: 'DELETE' });
+    loadAgents();
+}
+
+/* ---------------- 设置 ---------------- */
+async function loadSettings() {
+    const { body } = await api('/api/auth/me');
+    if (body.user) {
+        document.querySelectorAll('input[name="am"]').forEach(r =>
+            r.checked = r.value === body.user.artifact_mode);
+    }
+}
+async function saveSettings() {
+    const mode = document.querySelector('input[name="am"]:checked').value;
+    await api('/api/auth/settings', {
+        method: 'POST', body: JSON.stringify({ artifact_mode: mode }),
+    });
+    toast('已保存');
+}
+
+/* ---------------- 启动 ---------------- */
+(async function boot() {
+    const { status, body } = await api('/api/auth/me');
+    if (status === 200 && body.user) {
+        me = body.user;
+        enterApp();
+    } else {
+        document.getElementById('authView').classList.remove('hidden');
+    }
+})();
+</script>
+</body>
+</html>

@@ -27,7 +27,8 @@ FE_MAPPING = {"y": "tfp_lp", "x": "rd", "id": "code", "time": "year", "controls"
 
 def make_client():
     tmp = tempfile.TemporaryDirectory(prefix="t2s_cloud_test_")
-    app = create_app(data_dir=tmp.name)
+    # 内存库：沙箱环境下新建 SQLite 文件要几秒，24 个用例各建一次会拖垮整套测试
+    app = create_app(data_dir=tmp.name, db_path=":memory:")
     app.config["TESTING"] = True
     client = app.test_client()
     db = app.extensions["t2s_db"]
@@ -300,6 +301,35 @@ class TestTasks(unittest.TestCase):
                                 json={"name": "x.dta", "schema": []},
                                 headers=agent_headers(self.token))
         self.assertEqual(resp.status_code, 400)
+
+
+class TestFrontendAndTemplates(unittest.TestCase):
+    def setUp(self):
+        self.tmp, self.app, self.client, self.db, self.invite = make_client()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_frontend_served(self):
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("Text2Stata", resp.get_data(as_text=True))
+
+    def test_frontend_traversal_blocked(self):
+        resp = self.client.get("/../server.py")
+        self.assertIn(resp.status_code, (403, 404))
+
+    def test_templates_requires_login(self):
+        self.assertEqual(self.client.get("/api/templates").status_code, 401)
+
+    def test_templates_registry_shape(self):
+        register(self.client, self.invite)
+        body = self.client.get("/api/templates").get_json()
+        self.assertIn("fe", body["templates"])
+        fe = body["templates"]["fe"]
+        self.assertEqual(fe["required_globals"], ["y", "x", "id", "time"])
+        self.assertIn("controls", fe["optional_globals"])
+        self.assertTrue(fe["description"])
 
 
 if __name__ == "__main__":
