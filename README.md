@@ -1,6 +1,8 @@
 # Text2Stata
 
-用自然语言描述分析需求，上传 Stata 数据，得到可复现的 `.do` 脚本与结果。
+把自然语言变成 Stata 实证分析的工具：用中文描述需求、上传 `.dta` 数据，得到可复现的 `.do` 脚本、回归结果和一份自动体检报告。
+
+架构上**刻意不让大模型写代码**——LLM 只输出结构化的「分析计划」（选哪个模板、变量怎么映射），真正的 Stata 代码由确定性模板引擎装配，交给本机 Stata 执行；执行层（跑没跑通，默认判失败）与校验层（结果像不像话，只提醒不阻断）各自独立把关。项目有两个发行形态：**本地一键包**（双击即用）和**云端版**（云端只做调度与界面，数据和 Stata 执行都留在用户自己电脑上，绕开 Stata 网络授权问题）。
 
 面向经管社科背景、需要做实证分析但不想被 Stata 命令行卡住的人。目标是把数据分析的重心从「写代码」挪回「提问题、看结果」。
 
@@ -112,6 +114,8 @@ Stata 的执行失败有很多种不说话的方式：授权过期、可执行�
 
 ## 快速开始
 
+两种方式都是**本地版**（全部跑在自己机器上）。想要网页形态、发给熟人用的**云端版**，见文末「关于云端版」。
+
 ### 方式一：解压即用（Windows，推荐）
 
 下载 `Text2Stata-windows.zip`，解压后双击 `Text2Stata.exe`。
@@ -196,7 +200,7 @@ cd backend && python app.py
 
 ---
 
-## 接口
+## 接口（本地版）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -213,6 +217,8 @@ cd backend && python app.py
 
 任务状态：`pending` → `running` → `success` / `failed` / `error`。
 
+云端版接口（账号、任务、代理派发）见 `docs/PROTOCOL.md`。
+
 ---
 
 ## 测试
@@ -227,6 +233,15 @@ python tests/test_execution_guard.py
 
 # 结果校验：解析真实 Stata 日志格式（50 项）
 python tests/test_result_audit.py
+
+# 云端版接口：鉴权/任务生命周期/产物策略/属主隔离（24 项）
+python tests/test_cloud_api.py
+```
+
+云端版还有一条需要本机 Stata 的全链路验证（起云端 → 起代理 → 真实执行 → 回传体检），在项目根目录跑：
+
+```bash
+python scripts/e2e_cloud.py
 ```
 
 `test_result_audit.py` 里锁了几个**只在真实日志上才会暴露**的坑，它们都曾造成静默失效：
@@ -242,8 +257,8 @@ python tests/test_result_audit.py
 ## 目录结构
 
 ```
-launcher.py                 启动器（打包入口）
-backend/
+launcher.py                 启动器（本地版打包入口）
+backend/                    本地版 + 分析内核（云端版复用同一套内核）
   app.py                    Flask 入口，接口与前端托管
   core/
     config.py               配置分层（环境变量 > config.json > 默认值）
@@ -255,14 +270,23 @@ backend/
     stata_worker.py         Stata 子进程执行与日志解析
     result_auditor.py       结果校验层
     templates/              模板库（registry.json 为唯一注册表）
-  tests/                    回归测试
+  tests/                    回归测试（含云端 API 测试）
 frontend/
-  index.html                单页前端（含设置面板）
+  index.html                本地版单页前端（含设置面板）
+cloud/                      云端版控制平面（Flask + SQLite）
+  server.py                 账号/邀请码、任务派发、产物归档、前端托管
+  db.py                     SQLite 数据层
+  plans.py                  计划 → .do 装配（复用 backend 内核）
+  static/index.html         云端版单页前端
+agent/                      云端版本地执行代理（轮询领取 → 本机 Stata 执行 → 回传）
 packaging/
   text2stata.spec           PyInstaller 配置
-  build.py                  打包脚本
+  build.py                  本地一键包打包脚本
+scripts/
+  e2e_cloud.py              云端版全链路端到端验证
 docs/
   DEPLOYMENT.md             本地版 / 云端版部署方案
+  PROTOCOL.md               代理 ↔ 云端接口契约
 eval/jev_routing/           旁路评测：意图路由能力评估（不进主链路）
 流程图/系统架构.md            架构图
 需求文档.docx                项目需求与背景
@@ -290,7 +314,22 @@ testdata.dta                演示数据（抽样样本）
 
 `docs/DEPLOYMENT.md` 写了两个版本（本地 / 云端）怎么切、以及为什么这么切。
 
-要点：Stata 的商业授权决定了「多人共享的云上 Stata」需要网络授权（要询价，量级五位数美元），所以云端版走的是**云端只做调度、执行留在用户自己机器上**的路子 —— 不用额外花钱，用户数据也不出本机。
+要点：Stata 的商业授权决定了「多人共享的云上 Stata」需要网络授权（要询价，量级五位数美元），所以云端版走的是**云端只做调度、执行留在用户自己机器上**的路子 —— 不用额外花钱，用户数据也不出本机。云端与代理的接口契约在 `docs/PROTOCOL.md`。
+
+跑起来试试（云端版不需要大模型也能用，建任务走手动计划）：
+
+```bash
+# 1. 起云端（首次启动控制台会打印初始邀请码）
+python -m cloud.server
+
+# 2. 浏览器打开 http://127.0.0.1:8000，注册后在「执行代理」页创建代理、复制令牌
+
+# 3. 本机起代理（执行 Stata 的那台机器）
+python -m agent.agent init --cloud http://127.0.0.1:8000 --token t2sa_...
+python -m agent.agent run
+
+# 4. 回网页：数据集页上传 .dta → 新建任务 → 任务列表看结果
+```
 
 **值得一提**
 
