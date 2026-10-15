@@ -7,21 +7,18 @@ if _rc {
     ssc install estout, replace
 }
 
-capture log close _all
-log using "ols_full_diagnostics.txt", text replace
-
 di "===== Full OLS workflow ====="
 di "Dependent variable: $y"
 di "Core explanatory variable: $x"
 di "Controls: $controls"
 
-quietly regress $y $x
+regress $y $x
 est store ols_base
 
-quietly regress $y $x $controls
+regress $y $x $controls
 est store ols_controls
 
-quietly regress $y $x $controls, vce(robust)
+regress $y $x $controls, vce(robust)
 est store ols_robust
 
 esttab ols_base ols_controls ols_robust using "ols_full_result.rtf", replace ///
@@ -46,5 +43,3 @@ twoway ///
     ytitle("Observed $y") ///
     xtitle("Fitted values")
 graph export "ols_fit.png", replace width(1800)
-
-log close

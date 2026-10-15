@@ -2,9 +2,6 @@
 * Required globals: $y $x
 * Optional globals: $controls
 
-capture log close _all
-log using "descriptive_stats.txt", text replace
-
 local varlist "$y $x $controls"
 
 di "===== Selected variables ====="
@@ -30,5 +27,3 @@ postclose `handle'
 use `descstats', clear
 export delimited using "descriptive_stats.csv", replace
 restore
-
-log close

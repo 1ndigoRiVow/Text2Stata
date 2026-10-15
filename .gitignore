@@ -27,6 +27,16 @@ dist/
 eval/*/results/
 eval/*/.env.local
 
+# 一次性的验证工作区（跑完即弃）
+eval/_tpl_smoke/
+eval/_probe_ws/
+eval/_verify.py
+eval/_log_probe*.py
+eval/_template_smoke.py
+eval/_add_registry.py
+eval/_ssc_probe.py
+eval/*.log
+
 # 完整数据集不入库（含商业数据库导出内容，仅本地保留）
 # 仓库内公开的是随机抽样的演示样本 testdata.dta
 testdata_full.dta
@@ -39,3 +49,6 @@ agent_data/
 # Git Bash 下 2>nul 会生成字面文件 nul（Windows 保留设备名，删不掉），永不入库
 nul
 
+
+# 前端 JS 语法校验临时文件
+.tmp_check.js

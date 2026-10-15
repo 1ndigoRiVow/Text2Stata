@@ -453,6 +453,30 @@
                 <select id="sel-controls" class="select" multiple style="height: 240px;"></select>
                 <div class="status-line" style="margin-top: 5px;">按住 Ctrl 或 Cmd 可多选</div>
             </div>
+
+            <details style="margin-top: 14px;">
+                <summary style="cursor: pointer; font-size: .84rem; color: var(--muted);">
+                    进阶角色（IV、事件研究、中介等模板才需要）
+                </summary>
+                <div class="field">
+                    <label>工具变量 ($iv)</label>
+                    <select id="sel-iv" class="select"></select>
+                </div>
+                <div class="field">
+                    <label>中介变量 ($m)</label>
+                    <select id="sel-m" class="select"></select>
+                </div>
+                <div class="field">
+                    <label>处理组标识 ($treat)</label>
+                    <select id="sel-treat" class="select"></select>
+                </div>
+                <div class="field">
+                    <label>政策实施期 ($policy)</label>
+                    <input type="text" id="sel-policy" class="text-input" list="policy-options"
+                           placeholder="变量名，或直接填年份如 2015">
+                    <datalist id="policy-options"></datalist>
+                </div>
+            </details>
         </div>
 
         <div class="section">
@@ -590,11 +614,14 @@
         function fillSelects(schema) {
             const options = `<option value="">让 AI 自动识别</option>` +
                 schema.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)} (${escapeHtml(v.label || "无标签")})</option>`).join("");
-            ["sel-y", "sel-x", "sel-id", "sel-time"].forEach(id => {
+            ["sel-y", "sel-x", "sel-id", "sel-time", "sel-iv", "sel-m", "sel-treat"].forEach(id => {
                 document.getElementById(id).innerHTML = options;
             });
             document.getElementById("sel-controls").innerHTML =
                 schema.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)}</option>`).join("");
+            // policy 既可以是变量名也可以是字面年份，所以用 datalist 而不是 select
+            document.getElementById("policy-options").innerHTML =
+                schema.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.label || "")}</option>`).join("");
         }
 
         function collectPayload(query) {
@@ -607,7 +634,12 @@
                     x: document.getElementById("sel-x").value,
                     id: document.getElementById("sel-id").value,
                     time: document.getElementById("sel-time").value,
-                    controls: Array.from(document.getElementById("sel-controls").selectedOptions).map(o => o.value)
+                    controls: Array.from(document.getElementById("sel-controls").selectedOptions).map(o => o.value),
+                    // 进阶角色：留空不影响——只有模板自己声明需要它们时才校验
+                    iv: document.getElementById("sel-iv").value,
+                    m: document.getElementById("sel-m").value,
+                    treat: document.getElementById("sel-treat").value,
+                    policy: document.getElementById("sel-policy").value.trim()
                 },
                 ai_settings: {
                     line: document.getElementById("sel-line").value,

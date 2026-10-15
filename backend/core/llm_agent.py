@@ -55,7 +55,13 @@ Output requirements:
 Return valid JSON only. Do not include markdown fences or explanatory text outside JSON.
 The JSON must contain:
 1. "selected_template": string. It must be one key from the template registry.
-2. "variable_mapping": object. Include "y", "x", "controls", "id", "time".
+2. "variable_mapping": object. Available roles:
+     "y" (outcome), "x" (main regressor), "controls" (array of controls),
+     "id" (panel unit), "time" (period),
+     "iv" (instrument, for IV-2SLS), "m" (mediator, for mediation),
+     "policy" (period the treatment starts, for event study; a variable or a bare year),
+     "treat" (treatment group dummy).
+   Fill only the roles declared in the chosen template's required_globals / optional_globals.
    Use an empty string or empty array when a field is not mentioned.
 3. "reasoning": string. Briefly explain why this template and variable mapping were chosen.
 """

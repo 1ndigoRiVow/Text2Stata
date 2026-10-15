@@ -16,7 +16,10 @@ except ImportError:  # 允许直接运行本文件
 _COMPLETION_MARKER = re.compile(r"end of do-file", re.IGNORECASE)
 
 # Stata 报错的标准格式：r(198); / r(2000);
-_ERROR_CODE = re.compile(r"r\(([0-9]+)\);?")
+# 必须锚定行首：Stata 的报错码独占一行。不锚定的话，日志里回显的命令文本
+# 会误伤——psmatch2 的 `neighbor(1)` 里就含 "r(1)"，2026-10-15 实测让 PSM 模板
+# 永远被判失败（产物其实都生成了）。
+_ERROR_CODE = re.compile(r"^\s*r\(([0-9]+)\);?", re.MULTILINE)
 
 # 授权类问题：这类失败只打印授权横幅，日志里不会出现 r(***)，必须单独识别，
 # 否则会被误判成"执行成功"（2026-09 曾真实发生过：学校授权到期后系统一直报成功）。

@@ -107,27 +107,69 @@ Stata 的执行失败有很多种不说话的方式：授权过期、可执行�
 
 ---
 
-## 分析模板（13 个）
+## 分析模板（22 个）
+
+### 回归与描述
 
 | 模板 | 说明 | 必需变量 |
 |---|---|---|
 | `ols_basic` | 基础 OLS 回归 | y, x |
-| `ols_full` | 完整 OLS 诊断回归 | y, x |
+| `ols_full` | 完整 OLS 诊断回归（VIF、异方差、拟合图） | y, x |
+| `robust_cluster` | 聚类稳健标准误 | y, x |
+| `quantile_reg` | 分位数回归（0.25 / 0.5 / 0.75） | y, x |
+| `tobit_model` | Tobit 模型（左截断于 0） | y, x |
+| `count_model` | 计数模型（Poisson vs 负二项） | y, x |
 | `logit_binary` | 二元因变量 Logit | y, x |
 | `descriptive_stats` | 描述性统计 | y, x |
 | `correlation_matrix` | 相关系数矩阵 | y, x |
-| `data_quality_report` | 数据质量检查 | y, x |
-| `robust_cluster` | 聚类稳健标准误 | y, x |
+| `data_quality_report` | 数据质量检查（缺失、重复、分布） | y, x |
+| `winsorize` | 缩尾预处理（1% / 99%） | y, x |
+
+### 面板
+
+| 模板 | 说明 | 必需变量 |
+|---|---|---|
 | `fe` | 固定效应模型 | y, x, id, time |
 | `hdfe` | 双向固定效应 + 聚类稳健误 | y, x, id, time |
-| `panel_compare` | 面板模型对比 | y, x, id, time |
+| `panel_compare` | 面板模型对比（OLS / FE / RE / 双向 FE） | y, x, id, time |
 | `first_difference` | 一阶差分模型 | y, x, id, time |
-| `did_basic` | 基础双重差分 | y, x, id, time |
 | `hausman` | 豪斯曼检验 | y, x, id, time |
+| `dynamic_panel` | 动态面板 GMM（Arellano-Bond） | y, x, id, time |
 
-模板若依赖用户自装命令（`esttab` / `outreg2` / `reghdfe` / `winsor2`），脚本自带 `capture which` + `ssc install` 守卫，缺什么装什么（`reghdfe` 依赖 `ftools`，安装顺序有讲究）。
+### 因果推断
+
+| 模板 | 说明 | 必需变量 |
+|---|---|---|
+| `did_basic` | 基础双重差分 | y, x, id, time |
+| `event_study` | 事件研究法（平行趋势检验 + 系数图） | y, id, time, policy |
+| `iv_2sls` | 工具变量两阶段最小二乘 | y, x, iv |
+| `psm` | 倾向得分匹配（ATT + 平衡性检验） | y, x |
+| `mediation` | 中介效应（江艇两步法） | y, x, m |
+
+变量角色：`y` 被解释变量、`x` 核心解释变量、`controls` 控制变量、`id` 个体、`time` 时间，
+以及进阶角色 `iv` 工具变量、`m` 中介变量、`policy` 政策实施期（变量名或直接填年份）、`treat` 处理组标识。
+
+`mediation` 走的是江艇（2022）《因果推断经验研究中的中介效应与调节效应》的两步法：
+先估 X 对 M 的效应，再看 M 与 Y 的相关性方向。**不做** Sobel 检验，也**不报**中介效应占比——那要求 M→Y 那一步也被识别，而这个方法恰恰不主张把它当成因果识别。
+
+模板若依赖用户自装命令（`esttab` / `outreg2` / `reghdfe` / `winsor2` / `ivreg2` / `xtabond2` / `psmatch2` / `coefplot`），脚本自带 `capture which` + `ssc install` 守卫，缺什么装什么（`reghdfe` 依赖 `ftools`，安装顺序有讲究）。
 
 注册表是唯一入口：`backend/core/templates/registry.json`。
+
+**新增一个模板** = 一个 `.do` 文件 + 注册表一条记录（声明 `required_globals` / `optional_globals` / `output_files`）。两条硬性约定：
+
+- 用到自装命令必须带 `capture which` + `ssc install` 守卫。
+- **主回归不要加 `quietly`**。加上之后回归表会从日志里整块消失，执行层照报成功，
+  但结果校验层解析不到系数表，体检等于没装（2026-10-15 修过一轮，波及 9 个模板）。
+  只为取统计量（`quietly sum` 拿 `r(mean)` 之类）的可以保留。
+
+### 写模板的两条硬规矩
+
+1. **不要在主回归上加 `quietly`。** 回归输出必须留在主日志里——结果校验层解析的就是主日志，
+   一旦被抑制，系数表拿不到，体检会静默失效（只有 `fe` / `hdfe` 这类没写 `quietly` 的能被体检到）。
+   取统计量用的 `quietly summarize` 之类不受此限。
+2. **不要用 `log using` 另开日志文件。** 输出会多写一份没人看的 txt，而产物收集只认
+   `.rtf / .doc / .docx / .csv / .png / .gph`，txt 从来下载不到。要落文件就导出 csv 或 rtf。
 
 ---
 

@@ -259,7 +259,9 @@
 <script>
 const API = '';
 const AGENT_API = 'http://127.0.0.1:5100';
-const ROLE_LABELS = { y: '被解释变量 Y', x: '核心解释变量 X', id: '个体 ID', time: '时间变量', controls: '控制变量（可多选）' };
+const ROLE_LABELS = { y: '被解释变量 Y', x: '核心解释变量 X', id: '个体 ID', time: '时间变量',
+    controls: '控制变量（可多选）', iv: '工具变量', m: '中介变量 M',
+    policy: '政策实施期（变量名或直接填年份）', treat: '处理组标识（0/1）' };
 const STATUS_LABELS = { queued: '排队中', dispatched: '已派发', running: '执行中',
     succeeded: '成功', failed: '失败', error: '错误' };
 

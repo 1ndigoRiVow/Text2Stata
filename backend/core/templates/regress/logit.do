@@ -7,13 +7,10 @@ if _rc {
     ssc install estout, replace
 }
 
-capture log close _all
-log using "logit_diagnostics.txt", text replace
-
 di "===== Logit model ====="
 tab $y, missing
 
-quietly logit $y $x $controls, vce(robust)
+logit $y $x $controls, vce(robust)
 est store logit_model
 
 esttab logit_model using "logit_result.rtf", replace ///
@@ -26,5 +23,3 @@ margins, dydx($x $controls)
 
 predict double phat_logit if e(sample), pr
 summarize phat_logit if e(sample), detail
-
-log close

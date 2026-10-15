@@ -13,21 +13,19 @@ if _rc {
     ssc install ftools, replace
 }
 
-capture log close _all
-log using "panel_compare_diagnostics.txt", text replace
-
 xtset $id $time
 
-quietly regress $y $x $controls, vce(cluster $id)
+* 四个模型的输出都留在主日志里，结果校验层要逐个看。
+regress $y $x $controls, vce(cluster $id)
 est store pooled_ols
 
-quietly xtreg $y $x $controls, fe vce(cluster $id)
+xtreg $y $x $controls, fe vce(cluster $id)
 est store fe_oneway
 
-quietly xtreg $y $x $controls, re vce(cluster $id)
+xtreg $y $x $controls, re vce(cluster $id)
 est store re_model
 
-quietly reghdfe $y $x $controls, absorb($id $time) vce(cluster $id)
+reghdfe $y $x $controls, absorb($id $time) vce(cluster $id)
 est store twoway_fe
 
 esttab pooled_ols fe_oneway re_model twoway_fe using "panel_compare_result.rtf", replace ///
@@ -35,5 +33,3 @@ esttab pooled_ols fe_oneway re_model twoway_fe using "panel_compare_result.rtf",
     stats(N r2_a, labels("Observations" "Adj. R-squared")) ///
     mtitles("Pooled OLS" "FE" "RE" "Two-way FE") ///
     title("Panel model comparison")
-
-log close

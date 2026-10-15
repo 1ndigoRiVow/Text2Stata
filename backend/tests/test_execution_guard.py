@@ -51,6 +51,16 @@ def main():
         ("日志为空（Stata 启动即失败）", 0, "   \n\n", False, "log_empty"),
         ("日志缺少结束标记（中途中断）", 0, "sysuse auto, clear\n. sum price\n", False, "not_executed"),
         ("进程退出码非 0", 3, "end of do-file\n", False, "exit_code_3"),
+        # 命令回显里含 "r(数字)" 片段，不能当成报错：
+        # psmatch2 的 neighbor(1) 里就有 "r(1)"，2026-10-15 实测误判过一次。
+        ("命令回显含 neighbor(1)，不是报错", 0,
+         ". psmatch2 treat x1 x2, outcome(y) logit ate neighbor(1) caliper(0.05) common\n"
+         ". esttab using \"psm_result.rtf\", replace\n"
+         "(output written to psm_result.rtf)\n"
+         "\nend of do-file\n", True, None),
+        ("真正的报错仍要抓到（r(198) 独占一行）", 0,
+         ". summarize `wlist'\n' invalid\nr(198);\n\nend of do-file\n",
+         False, "r(198)"),
     ]
     for name, rc, log, expect_ok, expect_code in cases:
         tmp_log.write_text(log, encoding="utf-8")

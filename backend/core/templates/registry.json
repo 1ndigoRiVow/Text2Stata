@@ -3,116 +3,360 @@
         "name": "基础 OLS 回归",
         "description": "最基础的稳健标准误 OLS 回归，适合快速基准分析。",
         "file_path": "regress/ols.do",
-        "required_globals": ["y", "x"],
-        "optional_globals": ["controls"],
-        "output_files": ["ols_result.rtf"]
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "ols_result.rtf"
+        ]
     },
-
     "ols_full": {
         "name": "完整 OLS 诊断回归",
         "description": "依次输出基准模型、控制变量模型、稳健标准误模型，并附带 VIF、异方差检验、残差预测和拟合值图。",
         "file_path": "regress/ols_full.do",
-        "required_globals": ["y", "x"],
-        "optional_globals": ["controls"],
-        "output_files": ["ols_full_result.rtf", "ols_fit.png"]
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "ols_full_result.rtf",
+            "ols_fit.png"
+        ]
     },
-
     "logit_binary": {
         "name": "二元因变量 Logit 回归",
         "description": "适用于 0/1 因变量，输出稳健标准误、边际效应和预测概率。",
         "file_path": "regress/logit.do",
-        "required_globals": ["y", "x"],
-        "optional_globals": ["controls"],
-        "output_files": ["logit_result.rtf"]
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "logit_result.rtf"
+        ]
     },
-
     "descriptive_stats": {
         "name": "描述性统计",
         "description": "输出核心变量的样本量、均值、标准差、分位数、最小值和最大值。",
         "file_path": "stats/descriptive.do",
-        "required_globals": ["y", "x"],
-        "optional_globals": ["controls"],
-        "output_files": ["descriptive_stats.csv"]
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "descriptive_stats.csv"
+        ]
     },
-
     "correlation_matrix": {
         "name": "相关系数矩阵",
         "description": "计算变量相关系数、显著性水平，并导出相关矩阵。",
         "file_path": "stats/correlation.do",
-        "required_globals": ["y", "x"],
-        "optional_globals": ["controls"],
-        "output_files": ["correlation_matrix.rtf"]
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "correlation_matrix.rtf"
+        ]
     },
-
     "data_quality_report": {
         "name": "数据质量检查",
         "description": "检查关键变量缺失值、重复值、异常分布和基本描述统计。",
         "file_path": "diagnostics/data_quality.do",
-        "required_globals": ["y", "x"],
-        "optional_globals": ["controls", "id", "time"],
-        "output_files": ["data_quality_report.txt"]
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls",
+            "id",
+            "time"
+        ],
+        "output_files": [
+            "data_quality_report.csv"
+        ]
     },
-
     "robust_cluster": {
         "name": "聚类稳健标准误回归",
         "description": "在存在个体变量时聚类到个体层面；没有个体变量时回退到普通稳健标准误。",
         "file_path": "robust/cluster_robust.do",
-        "required_globals": ["y", "x"],
-        "optional_globals": ["controls", "id"],
-        "output_files": ["cluster_robust_result.rtf"]
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls",
+            "id"
+        ],
+        "output_files": [
+            "cluster_robust_result.rtf"
+        ]
     },
-
     "fe": {
         "name": "固定效应模型",
         "description": "面板固定效应模型，适合已经指定 id 和 time 的面板数据。",
         "file_path": "regress/fe.do",
-        "required_globals": ["y", "x", "id", "time"],
-        "optional_globals": ["controls"],
-        "output_files": ["fe_result.rtf"]
+        "required_globals": [
+            "y",
+            "x",
+            "id",
+            "time"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "fe_result.rtf"
+        ]
     },
-
     "hdfe": {
         "name": "双向固定效应模型，聚类到个体的稳健误",
         "description": "使用 reghdfe 吸收个体和时间固定效应，并聚类到个体层面。",
         "file_path": "regress/hdfe.do",
-        "required_globals": ["y", "x", "id", "time"],
-        "optional_globals": ["controls"],
-        "output_files": ["hdfe_result.rtf"]
+        "required_globals": [
+            "y",
+            "x",
+            "id",
+            "time"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "hdfe_result.rtf"
+        ]
     },
-
     "panel_compare": {
         "name": "面板模型对比",
         "description": "同时估计 Pooled OLS、固定效应、随机效应和双向固定效应，便于横向比较。",
         "file_path": "panel/compare_models.do",
-        "required_globals": ["y", "x", "id", "time"],
-        "optional_globals": ["controls"],
-        "output_files": ["panel_compare_result.rtf"]
+        "required_globals": [
+            "y",
+            "x",
+            "id",
+            "time"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "panel_compare_result.rtf"
+        ]
     },
-
     "first_difference": {
         "name": "一阶差分模型",
         "description": "对因变量、核心解释变量和控制变量做一阶差分后回归，适合处理不随时间变化的个体异质性。",
         "file_path": "panel/first_difference.do",
-        "required_globals": ["y", "x", "id", "time"],
-        "optional_globals": ["controls"],
-        "output_files": ["first_difference_result.rtf"]
+        "required_globals": [
+            "y",
+            "x",
+            "id",
+            "time"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "first_difference_result.rtf"
+        ]
     },
-
     "did_basic": {
         "name": "基础双重差分 DID",
         "description": "将 $x 视为已经构造好的 treat_post 等 DID 交互项，吸收个体和时间固定效应，并聚类到个体层面。",
         "file_path": "causal/did_basic.do",
-        "required_globals": ["y", "x", "id", "time"],
-        "optional_globals": ["controls"],
-        "output_files": ["did_basic_result.rtf"]
+        "required_globals": [
+            "y",
+            "x",
+            "id",
+            "time"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "did_basic_result.rtf"
+        ]
     },
-
     "hausman": {
         "name": "豪斯曼检验，检验是否使用固定效应还是随机效应",
         "description": "估计 RE 与 FE，并执行 Hausman 检验。",
         "file_path": "regress/hausman.do",
-        "required_globals": ["y", "x", "id", "time"],
-        "optional_globals": ["controls"],
-        "output_files": ["hausman.rtf"]
+        "required_globals": [
+            "y",
+            "x",
+            "id",
+            "time"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "hausman.rtf"
+        ]
+    },
+    "iv_2sls": {
+        "name": "工具变量两阶段最小二乘（2SLS）",
+        "description": "用工具变量处理内生性，输出第一阶段、2SLS 结果与弱工具变量、内生性诊断。$x 是内生变量，$iv 是工具变量。",
+        "file_path": "causal/iv_2sls.do",
+        "required_globals": [
+            "y",
+            "x",
+            "iv"
+        ],
+        "optional_globals": [
+            "controls",
+            "id",
+            "time"
+        ],
+        "output_files": [
+            "iv_2sls_result.rtf"
+        ]
+    },
+    "event_study": {
+        "name": "事件研究法（平行趋势检验）",
+        "description": "按政策前后相对期估计动态效应并出图，用于检验平行趋势假设。$policy 是政策实施期，可填变量名或直接写年份。基期为 -1 期。",
+        "file_path": "causal/event_study.do",
+        "required_globals": [
+            "y",
+            "id",
+            "time",
+            "policy"
+        ],
+        "optional_globals": [
+            "controls",
+            "treat"
+        ],
+        "output_files": [
+            "event_study_result.rtf",
+            "event_study_plot.png"
+        ]
+    },
+    "psm": {
+        "name": "倾向得分匹配（PSM）",
+        "description": "最近邻 1:1 匹配估计处理效应 ATT，含平衡性检验与匹配前后对比。$x 应是 0/1 处理变量。",
+        "file_path": "causal/psm.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls",
+            "id"
+        ],
+        "output_files": [
+            "psm_result.rtf",
+            "psm_balance.png"
+        ]
+    },
+    "mediation": {
+        "name": "中介效应（江艇两步法）",
+        "description": "先估 X 对中介变量 M 的效应，再看 M 与 Y 的相关性方向是否与理论一致。不做 Sobel 检验，不算中介效应占比。",
+        "file_path": "causal/mediation.do",
+        "required_globals": [
+            "y",
+            "x",
+            "m"
+        ],
+        "optional_globals": [
+            "controls",
+            "id",
+            "time"
+        ],
+        "output_files": [
+            "mediation_result.rtf"
+        ]
+    },
+    "dynamic_panel": {
+        "name": "动态面板 GMM（Arellano-Bond）",
+        "description": "滞后一期被解释变量进入解释变量，两步差分 GMM，输出 AR(1)/AR(2) 与 Hansen 检验。",
+        "file_path": "panel/dynamic_panel.do",
+        "required_globals": [
+            "y",
+            "x",
+            "id",
+            "time"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "dynamic_panel_result.rtf"
+        ]
+    },
+    "tobit_model": {
+        "name": "Tobit 模型（左截断于 0）",
+        "description": "用于金额、比例这类下限归零的受限因变量，附带潜变量与观测值两套边际效应。",
+        "file_path": "regress/tobit_model.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "tobit_model_result.rtf"
+        ]
+    },
+    "count_model": {
+        "name": "计数模型（Poisson vs 负二项）",
+        "description": "非负整数因变量（专利数、事故数等）。两个模型都跑，用 lnalpha 与 AIC/BIC 判断是否存在过度分散。",
+        "file_path": "regress/count_model.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "count_model_result.rtf"
+        ]
+    },
+    "quantile_reg": {
+        "name": "分位数回归",
+        "description": "在 0.25/0.5/0.75 分位点上估计，并检验核心变量的影响在分布两端是否一致。",
+        "file_path": "regress/quantile_reg.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "quantile_reg_result.rtf"
+        ]
+    },
+    "winsorize": {
+        "name": "缩尾预处理（1% / 99%）",
+        "description": "生成 _w 后缀的缩尾变量并对比缩尾前后统计，用缩尾后变量重跑基准回归，另存一份数据。",
+        "file_path": "diagnostics/winsorize.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "winsorize_result.rtf"
+        ]
     }
 }
