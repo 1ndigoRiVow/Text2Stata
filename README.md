@@ -86,6 +86,25 @@ Stata 的执行失败有很多种不说话的方式：授权过期、可执行�
 
 校验结果只做提示，不阻断结果交付。
 
+### 模型怎么选
+
+大模型在本项目里只干一件事：把「中文需求 + 数据 schema + 模板注册表」翻译成
+**结构化 JSON 计划**。输入约 3~6k token，输出约 0.3k token，本质是
+**闭集分类 + 槽位填充**，不吃推理能力。
+
+所以选型标准是 **JSON 稳定性 > 中文 > 速度 > 价格**，而不是综合 benchmark 排名。
+当前推荐模型为 `qwen3.7-flash`（`core/model_catalog.py` 的 `RECOMMENDED_MODEL`），
+由 `eval/model_picker` 在本项目自己的 12 道路由题上实测得出。
+
+模型目录分两层：
+
+- **策展层**——人工挑过、实测过的模型，带推荐标记与一句话说明。**推荐默认值只从这里产生。**
+- **发现层**——拿当前 key 打中转站 `/v1/models` 补进来的其余可用模型，自动过滤掉
+  embedding / TTS / 图像等非对话模型。
+
+这么分是因为中转站上架什么、下架什么不由我们控制。让默认值跟着远程列表漂，
+用户体验就会随供应商库存变化。远程拉取失败时静默降级到策展清单，前端下拉框不会空。
+
 ---
 
 ## 分析模板（13 个）
@@ -162,7 +181,7 @@ pip install -r requirements.txt
 # 模型接口
 TEXT2STATA_API_URL=https://your-endpoint/v1/chat/completions
 TEXT2STATA_API_KEY_LINE1=sk-...
-TEXT2STATA_DEFAULT_MODEL=gpt-4o
+TEXT2STATA_DEFAULT_MODEL=qwen3.7-flash
 
 # Stata 可执行文件（留空则自动探测）
 TEXT2STATA_STATA_PATH=C:\Program Files\StataNow19\StataSE-64.exe
@@ -213,6 +232,7 @@ cd backend && python app.py
 | GET | `/api/config` | 读取当前配置（API Key 只回传掩码） |
 | POST | `/api/config` | 保存配置，立即生效 |
 | GET | `/api/stata/detect` | 探测本机所有 Stata 可执行文件 |
+| GET | `/api/models` | 模型目录（策展清单 + 中转站 `/v1/models` 发现），供设置面板渲染下拉 |
 | GET | `/api/health` | 健康检查 |
 
 任务状态：`pending` → `running` → `success` / `failed` / `error`。
@@ -236,6 +256,9 @@ python tests/test_result_audit.py
 
 # 云端版接口：鉴权/任务生命周期/产物策略/属主隔离（24 项）
 python tests/test_cloud_api.py
+
+# 模型目录：策展/远程合并、非文本模型过滤、降级路径（11 项）
+python tests/test_model_catalog.py
 ```
 
 云端版还有一条需要本机 Stata 的全链路验证（起云端 → 起代理 → 真实执行 → 回传体检），在项目根目录跑：

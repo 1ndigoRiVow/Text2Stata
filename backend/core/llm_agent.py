@@ -5,12 +5,8 @@ import requests
 from core import config
 
 
-AVAILABLE_MODELS = [
-    "gpt-4o",
-    "gpt-4o-mini",
-    "deepseek-v3.2",
-    "gpt-3.5-turbo",
-]
+# 可选模型与推荐默认值统一放在 core/model_catalog.py，不要在这里再硬编码一份：
+# 两份列表迟早会漂，而且默认值一旦漂移，用户每次新建任务都得手动改。
 
 
 class LLMAgent:

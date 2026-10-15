@@ -13,6 +13,11 @@ workspace/
 # 开发模式下设置面板会把配置写到这里，里面有 API key
 backend/config.json
 
+# 明文 API key 文件，永不入库
+apikey.txt
+*apikey*.txt
+*.key.txt
+
 # 打包产物
 build/
 dist/

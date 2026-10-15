@@ -422,11 +422,10 @@
             </div>
             <div class="field" style="margin-bottom: 0;">
                 <label>模型</label>
+                <!-- 兜底选项：/api/models 拉不到时才显示，正常情况下会被目录整体覆盖 -->
                 <select id="sel-model" class="select">
-                    <option value="gpt-3.5-turbo">GPT-3.5-Turbo</option>
-                    <option value="gpt-4o-mini">GPT-4o-Mini</option>
-                    <option value="gpt-4o">GPT-4o</option>
-                    <option value="deepseek-v3.2">DeepSeek-V3.2</option>
+                    <option value="deepseek-v4-flash">DeepSeek-V4-Flash</option>
+                    <option value="qwen3.7-flash">Qwen3.7-Flash</option>
                 </select>
             </div>
         </div>
@@ -509,7 +508,9 @@
 
                 <div class="field">
                     <label>默认模型</label>
-                    <input type="text" class="text-input" id="cfg-model" placeholder="gpt-4o">
+                    <select id="cfg-model-preset" class="select" style="margin-bottom: 8px;"></select>
+                    <input type="text" class="text-input" id="cfg-model" placeholder="deepseek-v4-flash">
+                    <div class="settings-hint">上面选一个推荐模型，或在下面直接填中转站里的任意模型 id。</div>
                 </div>
 
                 <div class="field">
@@ -840,16 +841,89 @@
             document.getElementById("stataHint").textContent = stata.message || "";
         }
 
-        function syncModelSelect(model) {
-            if (!model) return;
+        // 模型目录：策展清单优先，中转站列表补充。
+        // 拉不到就保留 HTML 里写死的兜底选项，绝不让下拉框空掉。
+        let MODEL_CATALOG = null;
+
+        async function loadModelCatalog() {
+            if (MODEL_CATALOG !== null) return MODEL_CATALOG;
+            try {
+                const response = await fetch(`${API_BASE}/models`);
+                const data = await response.json();
+                MODEL_CATALOG = data.status === "success" ? data : null;
+            } catch (error) {
+                MODEL_CATALOG = null;
+            }
+            return MODEL_CATALOG;
+        }
+
+        function renderModelOptions(select, current) {
+            const catalog = MODEL_CATALOG;
+            if (!catalog) return null;
+
+            const groups = [];
+            ["recommended", "high", "cheap"].forEach(tier => {
+                const items = (catalog.curated || []).filter(m => m.tier === tier && m.available);
+                if (items.length) {
+                    groups.push({ label: items[0].tier_label || tier, items });
+                }
+            });
+
+            // 策展的模型在这个中转站一个都没挂出来，才退回"有什么列什么"
+            if (!groups.length) {
+                const fallback = [];
+                (catalog.others || []).forEach(g => g.models.forEach(m => fallback.push({ id: m, label: m, note: "" })));
+                if (fallback.length) {
+                    groups.push({ label: "中转站可用", items: fallback.slice(0, 20) });
+                } else {
+                    return null;
+                }
+            }
+
+            select.innerHTML = "";
+            const known = new Set();
+            groups.forEach(group => {
+                const og = document.createElement("optgroup");
+                og.label = group.label;
+                group.items.forEach(item => {
+                    const option = document.createElement("option");
+                    option.value = item.id;
+                    option.textContent = item.note ? `${item.label} — ${item.note}` : item.label;
+                    og.appendChild(option);
+                    known.add(item.id);
+                });
+                select.appendChild(og);
+            });
+
+            const rest = [];
+            (catalog.others || []).forEach(g => g.models.forEach(m => { if (!known.has(m)) rest.push(m); }));
+            if (rest.length) {
+                const og = document.createElement("optgroup");
+                og.label = "其他可用";
+                rest.slice(0, 24).forEach(m => {
+                    const option = document.createElement("option");
+                    option.value = m;
+                    option.textContent = m;
+                    og.appendChild(option);
+                    known.add(m);
+                });
+                select.appendChild(og);
+            }
+            return known;
+        }
+
+        async function syncModelSelect(model) {
+            await loadModelCatalog();
             const select = document.getElementById("sel-model");
-            if (!Array.from(select.options).some(option => option.value === model)) {
+            const known = renderModelOptions(select, model)
+                || new Set(Array.from(select.options).map(o => o.value));
+            if (model && !known.has(model)) {
                 const option = document.createElement("option");
                 option.value = model;
-                option.textContent = model;
+                option.textContent = `${model}（当前配置）`;
                 select.appendChild(option);
             }
-            select.value = model;
+            if (model) select.value = model;
         }
 
         async function loadSettings() {
@@ -877,11 +951,36 @@
                         : `线路 ${index + 1}${index === 0 ? "" : "（可选）"}`;
                 });
 
+                await syncModelSelect(cfg.default_model);
+                fillModelPreset(cfg.default_model);
+
                 renderEnv(data);
                 status.textContent = "";
             } catch (error) {
                 status.textContent = `读取失败：${error.message}`;
             }
+        }
+
+        // 设置面板的下拉与主界面共用一个目录，选中后写回文本框
+        function fillModelPreset(current) {
+            const preset = document.getElementById("cfg-model-preset");
+            const source = document.getElementById("sel-model");
+            preset.innerHTML = "";
+            const seen = new Set();
+            Array.from(source.options).forEach(option => {
+                if (seen.has(option.value)) return;
+                seen.add(option.value);
+                const clone = document.createElement("option");
+                clone.value = option.value;
+                clone.textContent = option.textContent;
+                preset.appendChild(clone);
+            });
+            if (!preset.options.length) return;
+
+            const recommended = MODEL_CATALOG && MODEL_CATALOG.recommended;
+            preset.value = (current && seen.has(current))
+                ? current
+                : (recommended && seen.has(recommended) ? recommended : preset.options[0].value);
         }
 
         async function detectStata() {
@@ -931,7 +1030,7 @@
                 }
                 renderEnv(data);
                 await loadSettings();
-                syncModelSelect(data.config && data.config.default_model);
+                await syncModelSelect(data.config && data.config.default_model);
                 status.textContent = "已保存并生效";
                 setTimeout(() => { status.textContent = ""; }, 2600);
             } catch (error) {
@@ -943,12 +1042,16 @@
             if (event.key === "Escape") closeSettings();
         });
 
+        document.getElementById("cfg-model-preset").addEventListener("change", event => {
+            document.getElementById("cfg-model").value = event.target.value;
+        });
+
         (async function init() {
             try {
                 const response = await fetch(`${API_BASE}/config`);
                 const data = await response.json();
                 renderEnv(data);
-                syncModelSelect(data.config && data.config.default_model);
+                await syncModelSelect(data.config && data.config.default_model);
                 if (new URLSearchParams(location.search).has("settings")) openSettings();
             } catch (error) {
                 document.getElementById("envStatus").innerHTML =

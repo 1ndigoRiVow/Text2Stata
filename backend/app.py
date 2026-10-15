@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-from core import config, paths, stata_detect
+from core import config, model_catalog, paths, stata_detect
 from core.llm_agent import LLMAgent
 from core.logic_center import generate_stata_header
 from core.result_auditor import ResultAuditor
@@ -369,6 +369,24 @@ def update_config():
 @app.route("/api/stata/detect", methods=["GET"])
 def detect_stata():
     return jsonify({"status": "success", "candidates": stata_detect.detect()})
+
+
+@app.route("/api/models", methods=["GET"])
+def list_models():
+    """
+    模型目录，给设置面板渲染下拉框用。
+
+    拿当前线路的 key 去中转站打 /v1/models，把策展清单合并进去。
+    远程拉不到也不报错 —— 降级到只看策展清单，保证面板永远有东西可选。
+    """
+    line = request.args.get("line") or "line1"
+    api_key = config.API_LINES.get(line) or ""
+    if not api_key:
+        # 指定线路没配 key 时，退而用任意一把已配置的，至少把目录列出来
+        api_key = next((value for value in config.API_LINES.values() if value), "")
+
+    catalog = model_catalog.build_catalog(config.API_URL, api_key)
+    return jsonify({"status": "success", **catalog})
 
 
 # --------------------------------------------------------------------------
