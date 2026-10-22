@@ -64,7 +64,19 @@ def generate_stata_header(var_mapping):
     data_structure = determine_data_structure(id_var, time_var)
     
     if data_structure == "panel":
-        header_lines.append(f"xtset $id $time  // 面板数据设定")
+        # 用 capture 包住：个体-时间组合有重复时 xtset 会报 r(451)，
+        # 而这时恰恰需要让清洗类模板跑起来去重（2026-10-22 实测：
+        # deduplicate 自己都被 header 的 xtset 打死了，等于没有自救通道）。
+        # xtset 失败不阻断，但要把原因和出路讲清楚——
+        # 真正的面板命令（xtreg / reghdfe）随后会正常报"必须先 xtset"。
+        header_lines.append("capture xtset $id $time  // 面板数据设定")
+        header_lines.append("if _rc {")
+        header_lines.append('    di ""')
+        header_lines.append('    di "⚠ 面板设定失败：$id 与 $time 的组合不唯一（存在重复观测）。"')
+        header_lines.append('    di "  后续 xtreg / reghdfe 等面板命令会报错。"')
+        header_lines.append('    di "  先跑一次「重复观测处理」，或把数据 collapse 到个体-时间层面。"')
+        header_lines.append('    di ""')
+        header_lines.append("}")
     elif data_structure == "time_series":
         header_lines.append(f"tsset $time  // 时间序列设定")
     else:

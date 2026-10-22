@@ -358,5 +358,104 @@
         "output_files": [
             "winsorize_result.rtf"
         ]
+    },
+    "missing_handler": {
+        "name": "缺失值处理",
+        "description": "盘点各变量缺失比例，并排给出按行删除 / 均值插补 / 面板个体内填充三种方案的样本量与均值对比，默认保存按行删除版本。",
+        "file_path": "clean/missing_handler.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls",
+            "id",
+            "time"
+        ],
+        "output_files": [
+            "missing_report.csv"
+        ]
+    },
+    "outlier_trim": {
+        "name": "异常值识别与截尾",
+        "description": "同时用 3σ 与 1.5×IQR 两种口径识别异常值，默认按 IQR 截尾整行删除，对比前后样本量与统计并重跑基准回归。",
+        "file_path": "clean/outlier_trim.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "outlier_report.csv",
+            "outlier_trim_result.rtf"
+        ]
+    },
+    "transform_vars": {
+        "name": "变量变换（对数 / 平方根 / 标准化）",
+        "description": "生成 _ln / _sqrt / _std / _sq 后缀变量，输出变换前后偏度与峰度对比，并跑双对数与标准化两套基准回归。",
+        "file_path": "clean/transform_vars.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "transform_report.csv",
+            "transform_result.rtf"
+        ]
+    },
+    "panel_balance": {
+        "name": "面板平衡化",
+        "description": "诊断面板结构，并排给出 tsfill 补齐（保全部个体）与强平衡（只留完整个体）两种方案的样本量与代价，默认保存强平衡版本。",
+        "file_path": "clean/panel_balance.do",
+        "required_globals": [
+            "id",
+            "time"
+        ],
+        "optional_globals": [
+            "y",
+            "x",
+            "controls"
+        ],
+        "output_files": [
+            "panel_balance_report.csv"
+        ]
+    },
+    "vif_screen": {
+        "name": "共线性诊断与变量筛选",
+        "description": "用辅助回归算每个解释变量的 VIF，逐步剔除 VIF 超过 10 的变量，输出保留与剔除清单并用保留变量重跑回归。",
+        "file_path": "clean/vif_screen.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "vif_report.csv",
+            "vif_screen_result.rtf"
+        ]
+    },
+    "deduplicate": {
+        "name": "重复观测处理",
+        "description": "按个体-时间组合（或整行）检查重复观测，先列出重复样本再删除，报告删除行数并把去重后的数据另存。",
+        "file_path": "clean/deduplicate.do",
+        "required_globals": [
+            "id"
+        ],
+        "optional_globals": [
+            "time",
+            "y",
+            "x",
+            "controls"
+        ],
+        "output_files": [
+            "deduplicate_report.csv"
+        ]
     }
 }

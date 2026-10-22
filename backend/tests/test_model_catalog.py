@@ -49,7 +49,10 @@ class TestCatalogBuild(unittest.TestCase):
         self.assertTrue(all(not item["available"] for item in catalog["curated"]))
 
     def test_unreachable_endpoint_degrades(self):
-        catalog = model_catalog.build_catalog("https://example.invalid/v1/chat/completions", "x" * 32)
+        # probe=False：这个用例只测列表拉取失败的降级，别顺带发一轮探活请求
+        catalog = model_catalog.build_catalog(
+            "https://example.invalid/v1/chat/completions", "x" * 32, probe=False
+        )
         self.assertEqual(catalog["source"], "curated_only")
         self.assertTrue(catalog["curated"])
 
@@ -73,7 +76,7 @@ class TestCatalogBuild(unittest.TestCase):
 
         model_catalog.fetch_remote_models = fake_fetch
         try:
-            catalog = model_catalog.build_catalog(api_url, api_key)
+            catalog = model_catalog.build_catalog(api_url, api_key, probe=False)
         finally:
             model_catalog.fetch_remote_models = original
 
@@ -93,6 +96,63 @@ class TestCatalogBuild(unittest.TestCase):
         self.assertNotIn("deepseek-v4-flash", others)
         self.assertNotIn("text-embedding-3-large", others)
         self.assertNotIn("claude-opus-4-5-20251101", others)
+
+class TestProbeCallable(unittest.TestCase):
+    """列表存在 ≠ 可调用。
+
+    2026-10-22 实测：qwen3.7-flash 挂在 /v1/models 里，真调却返回
+    HTTP 500「分组 auto 下模型 qwen3.7-flash 的可用渠道不存在」。
+    只看列表会把它标成"可用"，用户选了才发现调不通。
+    """
+
+    def test_probe_failure_marks_unavailable(self):
+        api_url = "https://example.invalid/v1/chat/completions"
+        api_key = "sk-probe-test"
+
+        orig_remote = model_catalog.fetch_remote_models
+        orig_probe = model_catalog.probe_callable
+
+        # 列表里全都有，但只有 gpt-6.1-sol 真调得通
+        model_catalog.fetch_remote_models = lambda url, key, timeout=15: [
+            item["id"] for item in model_catalog.CURATED_MODELS
+        ]
+        model_catalog.probe_callable = lambda url, key, model_id, timeout=12: (
+            model_id == "gpt-6.1-sol"
+        )
+
+        try:
+            catalog = model_catalog.build_catalog(api_url, api_key, probe=True)
+        finally:
+            model_catalog.fetch_remote_models = orig_remote
+            model_catalog.probe_callable = orig_probe
+
+        by_id = {item["id"]: item for item in catalog["curated"]}
+        self.assertEqual(by_id["gpt-6.1-sol"]["callable"], True)
+        self.assertTrue(by_id["gpt-6.1-sol"]["available"])
+        self.assertEqual(by_id["deepseek-v4-flash"]["callable"], False)
+        self.assertFalse(by_id["deepseek-v4-flash"]["available"])
+
+    def test_probe_uncertain_does_not_condemn(self):
+        """探活自己没问出结果（网络抖动）时，不能把模型判成不可用。"""
+        api_url = "https://example.invalid/v1/chat/completions"
+
+        orig_remote = model_catalog.fetch_remote_models
+        orig_probe = model_catalog.probe_callable
+
+        model_catalog.fetch_remote_models = lambda url, key, timeout=15: [
+            item["id"] for item in model_catalog.CURATED_MODELS
+        ]
+        model_catalog.probe_callable = lambda url, key, model_id, timeout=12: None
+
+        try:
+            catalog = model_catalog.build_catalog(api_url, "sk-probe-uncertain", probe=True)
+        finally:
+            model_catalog.fetch_remote_models = orig_remote
+            model_catalog.probe_callable = orig_probe
+
+        # 列表里都有，探活给不出结论 → 保持"可用"，不误杀
+        self.assertTrue(all(item["callable"] is None for item in catalog["curated"]))
+        self.assertTrue(all(item["available"] for item in catalog["curated"]))
 
     def test_key_never_cached_in_plaintext(self):
         """缓存键里只留哈希，防止密钥被顺手写进内存快照或日志。"""

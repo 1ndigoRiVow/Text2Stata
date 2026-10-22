@@ -29,7 +29,7 @@ except ImportError:  # 允许直接运行本文件
 DEFAULTS = {
     "api_url": "https://globalai.vip/v1/chat/completions",
     "api_keys": {"line1": "", "line2": "", "line3": ""},
-    "default_model": "qwen3.7-flash",
+    "default_model": "gpt-6.1-sol",
     "stata_path": "",
     "max_upload_mb": 100,
     "host": "127.0.0.1",

@@ -93,7 +93,7 @@ Stata 的执行失败有很多种不说话的方式：授权过期、可执行�
 **闭集分类 + 槽位填充**，不吃推理能力。
 
 所以选型标准是 **JSON 稳定性 > 中文 > 速度 > 价格**，而不是综合 benchmark 排名。
-当前推荐模型为 `qwen3.7-flash`（`core/model_catalog.py` 的 `RECOMMENDED_MODEL`），
+当前推荐模型为 `gpt-6.1-sol`（`core/model_catalog.py` 的 `RECOMMENDED_MODEL`），
 由 `eval/model_picker` 在本项目自己的 12 道路由题上实测得出。
 
 模型目录分两层：
@@ -107,7 +107,20 @@ Stata 的执行失败有很多种不说话的方式：授权过期、可执行�
 
 ---
 
-## 分析模板（22 个）
+## 分析模板（28 个）
+
+### 数据清洗
+
+| 模板 | 说明 | 必需变量 |
+|---|---|---|
+| `missing_handler` | 缺失值处理：并排给按行删除 / 均值插补 / 面板填充三种方案对比 | y, x |
+| `outlier_trim` | 异常值识别与截尾：3σ 与 1.5×IQR 两种口径，重跑基准回归 | y, x |
+| `transform_vars` | 变量变换：对数 / 平方根 / 标准化 / 平方，含偏度峰度对比 | y, x |
+| `panel_balance` | 面板平衡化：tsfill 补齐 vs 强平衡，两种方案的代价对比 | id, time |
+| `vif_screen` | 共线性诊断与变量筛选：逐步剔除 VIF > 10 的控制变量 | y, x |
+| `deduplicate` | 重复观测处理：按个体-时间组合查重，先列后删 | id |
+
+清洗类模板的产物是**处理报告**（csv/rtf），清洗后的数据存为 `cleaned_data.dta` 留在执行目录，**不随结果回传**。这是故意的：云端版的前提就是数据不出本机。
 
 ### 回归与描述
 
@@ -162,6 +175,10 @@ Stata 的执行失败有很多种不说话的方式：授权过期、可执行�
 - **主回归不要加 `quietly`**。加上之后回归表会从日志里整块消失，执行层照报成功，
   但结果校验层解析不到系数表，体检等于没装（2026-10-15 修过一轮，波及 9 个模板）。
   只为取统计量（`quietly sum` 拿 `r(mean)` 之类）的可以保留。
+- **清洗类模板不要删核心解释变量**。共线性的处理对象是控制变量；`$x` 和别人共线
+  属于模型设定问题，删掉它等于把要研究的东西删了（`vif_screen` 里 `$x` 受保护）。
+- **清洗类模板要能在脏数据上跑起来**。它们本来就是用来修重复观测的，
+  如果自身依赖 `xtset`（个体-时间组合有重复时会失败），就没有自救通道了。
 
 ### 写模板的两条硬规矩
 
@@ -223,7 +240,7 @@ pip install -r requirements.txt
 # 模型接口
 TEXT2STATA_API_URL=https://your-endpoint/v1/chat/completions
 TEXT2STATA_API_KEY_LINE1=sk-...
-TEXT2STATA_DEFAULT_MODEL=qwen3.7-flash
+TEXT2STATA_DEFAULT_MODEL=gpt-6.1-sol
 
 # Stata 可执行文件（留空则自动探测）
 TEXT2STATA_STATA_PATH=C:\Program Files\StataNow19\StataSE-64.exe
