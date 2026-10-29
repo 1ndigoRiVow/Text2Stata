@@ -32,11 +32,14 @@ from flask import Flask, g, jsonify, request, send_file, send_from_directory, se
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from . import plans
+from . import keys, plans
 from .db import TERMINAL_STATES, Database, utcnow
+from .quota import Quota
 
 # plans 已把 backend/ 加进 sys.path，结果体检层与本地版共用一份实现
 from core.result_auditor import ResultAuditor  # noqa: E402
+from core.model_catalog import RECOMMENDED_MODEL, build_catalog  # noqa: E402
+from core.llm_agent import LLMAgent  # noqa: E402
 
 # --------------------------------------------------------------------------
 # 常量（协议第五、六节的数字都在这里）
@@ -77,8 +80,10 @@ def create_app(data_dir=None, db_path=None) -> Flask:
 
     db = Database(db_path or (data_dir / "cloud.db"))
     auditor = ResultAuditor()
+    quota = Quota(db)
     app.extensions["t2s_db"] = db
     app.extensions["t2s_data_dir"] = data_dir
+    app.extensions["t2s_quota"] = quota
 
     bootstrap_invite = _ensure_initial_invite(db)
 
@@ -195,10 +200,163 @@ def create_app(data_dir=None, db_path=None) -> Flask:
     def update_settings():
         payload = request.get_json(silent=True) or {}
         mode = payload.get("artifact_mode")
-        if mode not in ("cloud", "local"):
-            return jsonify({"status": "error", "message": "artifact_mode 只能是 cloud 或 local。"}), 400
-        db.execute("UPDATE users SET artifact_mode = ? WHERE id = ?", (mode, g.user["id"]))
-        return jsonify({"status": "success", "artifact_mode": mode})
+        changed = False
+
+        if mode is not None:
+            if mode not in ("cloud", "local"):
+                return jsonify({"status": "error",
+                                "message": "artifact_mode 只能是 cloud 或 local。"}), 400
+            db.execute("UPDATE users SET artifact_mode = ? WHERE id = ?", (mode, g.user["id"]))
+            changed = True
+
+        # llm_model 留空 = 跟随推荐默认；这里存的只是偏好，不是密钥
+        if "llm_model" in payload:
+            model = str(payload.get("llm_model") or "").strip()
+            db.execute("UPDATE users SET llm_model = ? WHERE id = ?", (model, g.user["id"]))
+            changed = True
+
+        if not changed:
+            return jsonify({"status": "error", "message": "没有要修改的设置。"}), 400
+
+        # 注意逗号：(x) 是字符串不是元组，sqlite 会把每个字符当成一个绑定值
+        fresh = db.query_one("SELECT * FROM users WHERE id = ?", (g.user["id"],))
+        return jsonify({"status": "success", "user": _public_user(fresh)})
+
+    @app.post("/api/admin/users/<user_id>/quota")
+    @login_required
+    def set_user_quota(user_id):
+        """管理员给某个用户设每日计划调用上限。传 null = 跟随全局默认。"""
+        if not g.user["is_admin"]:
+            return jsonify({"status": "error", "message": "只有管理员能改配额。"}), 403
+
+        payload = request.get_json(silent=True) or {}
+        if "daily_calls" not in payload:
+            return jsonify({"status": "error", "message": "缺少 daily_calls。"}), 400
+
+        raw = payload.get("daily_calls")
+        if raw is None:
+            value = None
+        else:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                return jsonify({"status": "error", "message": "daily_calls 必须是整数或 null。"}), 400
+            if value < 0 or value > 100000:
+                return jsonify({"status": "error", "message": "daily_calls 超出合理范围。"}), 400
+
+        if not db.query_one("SELECT id FROM users WHERE id = ?", (user_id,)):
+            return jsonify({"status": "error", "message": "用户不存在。"}), 404
+
+        db.execute("UPDATE users SET quota_daily_calls = ? WHERE id = ?", (value, user_id))
+        return jsonify({"status": "success", "user_id": user_id, "daily_calls": value})
+
+    # ------------------------------------------------------------------
+    # 3.5 大模型密钥与配额（双密钥模式）
+    # ------------------------------------------------------------------
+    @app.post("/api/llm/status")
+    @login_required
+    def llm_status():
+        """前端据此渲染设置面板：有没有站点密钥、我今天还能用几次、预算剩多少。"""
+        site = keys.site_key(data_dir)
+        return jsonify({
+            "status": "success",
+            "site_key_configured": bool(site),
+            "site_key_hint": keys.mask(site),   # 只给掩码，明文不出服务端
+            "byok_allowed": keys.byok_allowed(),
+            "api_url": keys.site_url(),
+            "model": g.user.get("llm_model") or RECOMMENDED_MODEL,
+            "recommended_model": RECOMMENDED_MODEL,
+            "quota": quota.user_quota_state(g.user),
+            "budget": quota.site_budget(),
+            "burst": quota.burst_state(g.user["id"]),
+        })
+
+    @app.post("/api/llm/models")
+    @login_required
+    def llm_models():
+        """模型目录。密钥走请求体不走 URL——GET 的查询串会进访问日志。"""
+        payload = request.get_json(silent=True) or {}
+        url, key, mode = keys.resolve(payload, data_dir)
+        catalog = build_catalog(url, key)
+        return jsonify({"status": "success", "key_mode": mode or "none", **catalog})
+
+    @app.post("/api/plan")
+    @login_required
+    def create_plan():
+        """自然语言 → 结构化计划（不执行）。跑完由前端拿映射去建任务。"""
+        payload = request.get_json(silent=True) or {}
+        dataset_id = payload.get("dataset_id")
+        query = str(payload.get("query") or "").strip()
+        if not dataset_id or not query:
+            return jsonify({"status": "error", "message": "缺少 dataset_id 或 query。"}), 400
+
+        dataset = db.query_one(
+            "SELECT * FROM datasets WHERE id = ? AND user_id = ?", (dataset_id, g.user["id"])
+        )
+        if not dataset:
+            return jsonify({"status": "error", "message": "数据集不存在。"}), 404
+
+        url, key, mode = keys.resolve(payload, data_dir)
+        if not key:
+            return jsonify({
+                "status": "error",
+                "message": "没有可用的大模型密钥。请在设置里填自己的 API Key，"
+                           f"或让管理员配置站点密钥（环境变量 {keys.SITE_KEY_ENV}）。",
+                "byok_allowed": keys.byok_allowed(),
+            }), 402
+
+        ok, message, code = quota.check(g.user, mode)
+        if not ok:
+            return jsonify({"status": "error", "message": message, "key_mode": mode}), code
+
+        model = (str(payload.get("model") or "").strip()
+                 or g.user.get("llm_model")
+                 or RECOMMENDED_MODEL)
+
+        try:
+            agent = LLMAgent(api_url=url, api_key=key, current_model=model)
+            plan = agent.parse_intent(
+                query,
+                Database.loads(dataset["schema_json"], []),
+                plans.template_mgr.get_all_templates(),
+            )
+        except Exception as exc:
+            return jsonify({"status": "error", "message": f"大模型调用失败：{exc}"}), 500
+
+        # 调用已经发出去了，钱已经花了——不管结果成不成都要记账
+        usage = quota.record(g.user["id"], mode, model, agent.last_usage)
+
+        if not isinstance(plan, dict) or plan.get("status") == "error":
+            return jsonify({
+                "status": "error",
+                "message": plan.get("message") if isinstance(plan, dict) else "大模型返回异常。",
+                "usage": usage,
+            }), 502
+
+        try:
+            build = plans.build_task_script(plan.get("selected_template"),
+                                            plan.get("variable_mapping") or {})
+        except ValueError as exc:
+            # 模板选错或变量没填全：把模型原话一起给出去，方便人改
+            return jsonify({
+                "status": "error",
+                "message": str(exc),
+                "plan": plan,
+                "usage": usage,
+            }), 400
+
+        return jsonify({
+            "status": "success",
+            "plan": {
+                "selected_template": plan.get("selected_template"),
+                "variable_mapping": build["variable_mapping"],
+                "reasoning": plan.get("reasoning", ""),
+                "template_name": build["template_info"].get("name", ""),
+            },
+            "usage": {k: usage[k] for k in
+                      ("key_mode", "model", "prompt_tokens", "completion_tokens", "cost_cny")},
+            "quota": quota.user_quota_state(g.user),
+        })
 
     # ------------------------------------------------------------------
     # 3.2 代理管理（用户侧）
@@ -559,6 +717,10 @@ def _public_user(user) -> dict:
         "username": user["username"],
         "is_admin": bool(user["is_admin"]),
         "artifact_mode": user["artifact_mode"],
+        # 模型偏好（空 = 跟随推荐）；配额 null = 跟随全局默认。
+        # 密钥不在这里——BYOK 从来没进过数据库，站点密钥也不回显。
+        "llm_model": user.get("llm_model") or "",
+        "quota_daily_calls": user.get("quota_daily_calls"),
     }
 
 

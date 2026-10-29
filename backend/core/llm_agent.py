@@ -17,13 +17,21 @@ class LLMAgent:
     JSON analysis plan that the deterministic template engine can execute.
     """
 
-    def __init__(self, current_line="line1", current_model=None):
+    def __init__(self, current_line="line1", current_model=None, api_url=None, api_key=None):
         # 走 config 的属性访问而不是 import 常量：
         # 设置面板改完 key/模型后要立刻生效，不能用模块导入时的那份旧快照。
-        self.api_url = config.API_URL
+        self.api_url = api_url or config.API_URL
         self.max_tokens = 8000
         self.timeout = 120
-        self.switch_line(current_line)
+        # 上一次调用的 token 用量（云端计量用）；本地版不看它，留着无害
+        self.last_usage = None
+        if api_key:
+            # 显式注入密钥：不查 config 的线路表。云端按请求带 BYOK 时走这条，
+            # 密钥只在内存里活一次，不碰 config、不落盘。
+            self.current_line_name = "explicit"
+            self.api_key = api_key
+        else:
+            self.switch_line(current_line)
         self.switch_model(current_model or config.DEFAULT_MODEL)
 
     def switch_line(self, line_name):
@@ -83,11 +91,13 @@ The JSON must contain:
 
         response = None
         result_str = ""
+        self.last_usage = None
         try:
             response = requests.post(self.api_url, headers=headers, json=payload, timeout=self.timeout)
             response.raise_for_status()
 
             result_data = response.json()
+            self.last_usage = result_data.get("usage") or None
             result_str = result_data["choices"][0]["message"]["content"].strip()
             if result_str.startswith("```json"):
                 result_str = result_str[7:]

@@ -71,6 +71,14 @@
         border-radius: 10px; padding: 20px 22px; margin-bottom: 18px; }
     .panel h2 { font-size: 1rem; margin-bottom: 4px; }
     .panel h2 + .muted { margin-bottom: 8px; }
+    /* 一句话生成计划：与主表单分隔开的浅色区，不用实色块也不用阴影 */
+    .plan-box { background: #f7fafc; border: 1px solid var(--border);
+        border-radius: 8px; padding: 14px 16px; margin: 12px 0 18px; }
+    .plan-box label:first-child { margin-top: 0; }
+    .plan-reason { font-size: .84rem; color: var(--muted); margin-top: 10px;
+        border-left: 2px solid var(--border); padding-left: 10px; }
+    .kv-inline { font-size: .84rem; color: var(--muted); margin-top: 10px; }
+    .kv-inline b { color: var(--text); font-weight: 600; }
 
     /* ---------- 任务 ---------- */
     .task-row { display: flex; align-items: center; gap: 12px; padding: 11px 4px;
@@ -179,10 +187,18 @@
             <!-- 新建任务 -->
             <div id="page-new" class="page hidden">
                 <div class="panel">
-                    <h2>新建任务</h2>
-                    <p class="muted">选数据集和模板，再把变量填进模板要求的位置。
-                        自然语言智能解析将在站点配置大模型密钥后开放。</p>
-                    <label>数据集</label>
+                <h2>新建任务</h2>
+                <div class="plan-box">
+                    <label>用一句话生成计划（可选）</label>
+                    <input id="ntPlanQuery"
+                        placeholder="例如：控制企业规模与杠杆后，检验研发强度对全要素生产率的影响">
+                    <button style="margin-top:10px" onclick="planFromQuery()">生成计划</button>
+                    <div class="plan-reason hidden" id="planReason"></div>
+                    <div class="form-error" id="planError"></div>
+                </div>
+                <p class="muted">也可以直接选数据集和模板，自己把变量填进模板要求的位置。
+                    生成出来的计划可以再改，提交前你始终看得见每个变量被放到了哪里。</p>
+                <label>数据集</label>
                     <select id="ntDataset" onchange="renderMappingForm()"></select>
                     <label>分析模板</label>
                     <select id="ntTemplate" onchange="renderMappingForm()"></select>
@@ -230,6 +246,22 @@
 
             <!-- 设置 -->
             <div id="page-settings" class="page hidden">
+                <div class="panel">
+                    <h2>大模型密钥</h2>
+                    <p class="muted" id="keyModeHint">加载中…</p>
+                    <label>自带密钥 BYOK（可选，只存在你这台浏览器）</label>
+                    <input type="password" id="byokKey" placeholder="sk-..." autocomplete="off">
+                    <p class="muted">填了就用你的密钥，不计配额；留空则用站点密钥（计入每日配额）。
+                        这个密钥只写进浏览器本地存储，随请求发出，服务端不落库——
+                        不是承诺，是它压根没往数据库写过。</p>
+                    <label>计划模型</label>
+                    <select id="llmModel"></select>
+                    <div class="kv-inline" id="quotaBox"></div>
+                    <button class="primary" style="margin-top:14px" onclick="saveLlmSettings()">
+                        保存模型</button>
+                    <button class="danger" style="margin-top:14px;margin-left:8px"
+                        onclick="clearByok()">清除本机密钥</button>
+                </div>
                 <div class="panel">
                     <h2>产物回传策略</h2>
                     <p class="muted">回归表、图表等产物要不要回传到云端？</p>
@@ -536,6 +568,130 @@ async function revokeAgent(agentId) {
     loadAgents();
 }
 
+/* ---------------- 大模型密钥与配额（Phase 4b） ---------------- */
+// BYOK 只写 localStorage。服务端根本没有"保存密钥"这个接口——
+// 它每次随请求带来，用完即弃，从头到尾没进过数据库。
+const BYOK_STORE = 't2s_byok_key';
+
+function getByok() { return localStorage.getItem(BYOK_STORE) || ''; }
+
+async function loadLlmSettings() {
+    const { body } = await api('/api/llm/status', { method: 'POST', body: '{}' });
+    if (!body || body.status !== 'success') return;
+
+    document.getElementById('keyModeHint').textContent = body.site_key_configured
+        ? `站点密钥已配置（${body.site_key_hint}），计入每日配额。想不受配额限制就填自带密钥。`
+        : '站点未配置密钥，填一个自带密钥才能用「一句话生成计划」。';
+    document.getElementById('byokKey').value = getByok();
+
+    await loadModelOptions(body);
+    renderQuota(body);
+}
+
+async function loadModelOptions(status) {
+    // 用本机存的 BYOK 去问目录，"这个模型我能不能用"才是准的
+    const { body } = await api('/api/llm/models', {
+        method: 'POST', body: JSON.stringify({ api_key: getByok() }),
+    });
+    const sel = document.getElementById('llmModel');
+    const recommended = (body && body.recommended) || status.recommended_model || '';
+    const groups = [];
+
+    if (body && body.curated && body.curated.length) {
+        const opts = body.curated.map(m =>
+            `<option value="${esc(m.id)}">${esc(m.label || m.id)} ｜ ${esc(m.tier_label || '')}` +
+            `${m.available === false ? '（当前密钥下不可用）' : ''}</option>`).join('');
+        groups.push(`<optgroup label="推荐与实测过的">${opts}</optgroup>`);
+    }
+    for (const g of (body && body.others) || []) {
+        groups.push(`<optgroup label="${esc(g.family)}">` +
+            g.models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('') +
+            `</optgroup>`);
+    }
+    sel.innerHTML = `<option value="">跟随推荐（${esc(recommended)}）</option>` + groups.join('');
+    sel.value = (me && me.llm_model) || '';
+}
+
+function renderQuota(s) {
+    const q = s.quota || {}, b = s.budget || {};
+    let text = `今日用量 <b>${q.used_today} / ${q.daily_limit}</b> 次`;
+    if (q.customized) text += '（管理员为你单独设过）';
+    if (b.enabled) {
+        text += b.basis === 'cny'
+            ? ` ｜ 站点预算剩余 <b>${b.remaining_cny}</b> / ${b.limit_cny} 元`
+            : ` ｜ 站点预算剩余 <b>${b.remaining_tokens}</b> / ${b.limit_tokens} token`;
+    }
+    document.getElementById('quotaBox').innerHTML = text;
+}
+
+async function saveLlmSettings() {
+    const key = document.getElementById('byokKey').value.trim();
+    if (key) localStorage.setItem(BYOK_STORE, key);
+    else localStorage.removeItem(BYOK_STORE);
+
+    const { status, body } = await api('/api/auth/settings', {
+        method: 'POST',
+        body: JSON.stringify({ llm_model: document.getElementById('llmModel').value }),
+    });
+    if (status >= 400) { toast(body.message || '保存失败'); return; }
+    me = body.user;
+    toast('已保存');
+    loadLlmSettings();
+}
+
+function clearByok() {
+    localStorage.removeItem(BYOK_STORE);
+    document.getElementById('byokKey').value = '';
+    toast('本机密钥已清除');
+    loadLlmSettings();
+}
+
+/* ---------------- 一句话生成计划 ---------------- */
+async function planFromQuery() {
+    const query = document.getElementById('ntPlanQuery').value.trim();
+    const dataset_id = document.getElementById('ntDataset').value;
+    const err = document.getElementById('planError');
+    const reason = document.getElementById('planReason');
+
+    if (!query) { err.textContent = '先写一句话需求。'; return; }
+    if (!dataset_id) { err.textContent = '先选一个数据集。'; return; }
+
+    err.textContent = '生成中…';
+    const { status, body } = await api('/api/plan', {
+        method: 'POST',
+        body: JSON.stringify({ dataset_id, query, api_key: getByok() }),
+    });
+    if (status >= 400) {
+        err.textContent = body.message || '生成失败';
+        reason.classList.add('hidden');
+        return;
+    }
+    err.textContent = '';
+    applyPlan(body.plan);
+    const note = body.plan && body.plan.reasoning;
+    reason.textContent = note ? '模型的判断：' + note : '';
+    reason.classList.toggle('hidden', !note);
+    toast(`已按「${body.plan.template_name}」填好变量，核对后再提交`);
+}
+
+function applyPlan(plan) {
+    const tp = document.getElementById('ntTemplate');
+    if (plan.selected_template && templates[plan.selected_template]) {
+        tp.value = plan.selected_template;
+        renderMappingForm();   // 换了模板就得重画变量槽位
+    }
+    for (const [role, value] of Object.entries(plan.variable_mapping || {})) {
+        if (role === 'controls') {
+            const picked = new Set(Array.isArray(value) ? value : []);
+            document.querySelectorAll('#mf_controls input').forEach(cb =>
+                cb.checked = picked.has(cb.value));
+        } else {
+            const el = document.getElementById('mf_' + role);
+            if (el) el.value = value || '';
+        }
+    }
+}
+
 /* ---------------- 设置 ---------------- */
 async function loadSettings() {
     const { body } = await api('/api/auth/me');
@@ -543,6 +699,7 @@ async function loadSettings() {
         document.querySelectorAll('input[name="am"]').forEach(r =>
             r.checked = r.value === body.user.artifact_mode);
     }
+    loadLlmSettings();
 }
 async function saveSettings() {
     const mode = document.querySelector('input[name="am"]:checked').value;

@@ -92,6 +92,34 @@ queued ──领取──> dispatched ──开始执行──> running ──�
 `variable_mapping` 的键与本地版一致：`y / x / controls / id / time` 等，
 校验规则同本地版 `_missing_required_globals`。
 
+### 3.5 大模型密钥与配额（双密钥模式）
+
+两种密钥来源。**服务端从头到尾不保存 BYOK 密钥**——这样"我的密钥会不会被你看到"
+这个问题有干净的答案：不会，服务端没有存过。
+
+| 模式 | 密钥在哪 | 计量 |
+|---|---|---|
+| 站点密钥（`site`） | 服务器环境变量 / 配置文件 | 计入**用户每日配额** + **站点预算** |
+| 自带密钥（`byok`） | **只存在用户浏览器本地**，随请求体带上 | 用户自担。云端只做突发限流，**不计配额** |
+
+规则：
+
+- BYOK 只在单次请求的内存里活一次：不写库、不写日志、不回显（状态接口只给掩码）。
+- 突发限流对两种模式都生效——它保护的是服务器，不是用户的钱包。
+- 站点预算用尽 → 全站站点密钥停用，接口返回 503 并提示改用 BYOK。BYOK 不受影响。
+
+| 方法 | 路径 | 请求体 | 说明 |
+|---|---|---|---|
+| POST | `/api/plan` | `{dataset_id, query, model?, api_key?, api_url?}` | 自然语言 → 结构化计划（**不执行**）。缺密钥 402；超配额 429；站点预算耗尽 503；计划本身校验不过 400 |
+| POST | `/api/llm/status` | `{}` | 密钥模式、当前模型、今日用量与配额、站点预算剩余、突发上限 |
+| POST | `/api/llm/models` | `{api_key?, api_url?}` | 模型目录（策展层 + 远程发现）。**密钥走请求体不走 URL**——GET 的查询串会进访问日志 |
+| POST | `/api/auth/settings` | `{artifact_mode?, llm_model?}` | 设置。`llm_model` 留空表示跟随推荐默认 |
+| POST | `/api/admin/users/<id>/quota` | `{daily_calls}` | 管理员设该用户每日计划调用上限 |
+
+计量：一次计划 = 一次调用；token 数取大模型响应里的 `usage`；
+金额 = token × 单价（`T2S_LLM_PRICE_PER_MTOK`，单位元/百万 token）。
+未配单价时金额字段为 `null`，预算退化为按 token 计（`T2S_SITE_TOKEN_BUDGET`）。
+
 ---
 
 ## 四、代理侧接口
@@ -185,7 +213,10 @@ multipart/form-data，字段名 file，可多次调用逐文件上传
 1. 用户密码用 werkzeug `generate_password_hash` 存储；代理令牌只存 sha256。
 2. 会话 Cookie：`HttpOnly; SameSite=Lax`；HTTPS 部署（Phase 5）时打开 `Secure`。
 3. 所有写路径校验属主：任务/数据集/代理都只能被其创建者访问。
-4. 云端不持久化 BYOK 密钥（Phase 4 才引入，先立规矩）。
+4. 云端不持久化 BYOK 密钥（Phase 4b 已实现）：只活在单次请求的内存里，不写库、不写日志、不回显，
+   状态接口只给掩码。
 5. 日志上限 2 MB、产物单文件 50 MB、schema 上限 2000 个变量——防止代理异常刷爆存储。
 6. 云端日志不落 `do_script` 全文与 schema 原文之外的敏感内容；变量名本身可能暴露研究对象，
    访问日志定期清理（Phase 5 细化）。
+7. 站点密钥必须有配额与预算（Phase 4b 已实现）：挂在公网上的接口会被扫到，没有配额就是敞开的钱包。
+   金额算不出来（未配单价）时按 token 预算兜底，不允许"先跑着再说"。

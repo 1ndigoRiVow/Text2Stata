@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS users (
     pw_hash       TEXT NOT NULL,
     is_admin      INTEGER NOT NULL DEFAULT 0,
     artifact_mode TEXT NOT NULL DEFAULT 'cloud',
+    -- Phase 4b：计划模型的偏好（空 = 跟随推荐默认）、每日计划调用上限（NULL = 跟随全局默认）
+    llm_model          TEXT NOT NULL DEFAULT '',
+    quota_daily_calls  INTEGER,
     created_at    TEXT NOT NULL
 );
 
@@ -84,12 +87,43 @@ CREATE TABLE IF NOT EXISTS artifacts (
     created_at TEXT NOT NULL
 );
 
+-- Phase 4b：大模型调用计量。BYOK 也记，只是不计入配额与站点预算。
+-- cost_cny 为 NULL 表示没配单价、算不出钱。
+CREATE TABLE IF NOT EXISTS usage (
+    id                TEXT PRIMARY KEY,
+    user_id           TEXT NOT NULL REFERENCES users(id),
+    kind              TEXT NOT NULL DEFAULT 'plan',
+    key_mode          TEXT NOT NULL,
+    model             TEXT,
+    prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_cny          REAL,
+    created_at        TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_user   ON tasks(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_agent  ON tasks(agent_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_datasets_user ON datasets(user_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id);
+CREATE INDEX IF NOT EXISTS idx_usage_user_time ON usage(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_usage_mode_time ON usage(key_mode, created_at);
 """
+
+# 老库加列：CREATE TABLE IF NOT EXISTS 不会补列，只能显式加。
+# 每张表一次，重复执行安全（加之前先查 pragma）。
+_MIGRATIONS = [
+    ("users", "llm_model", "ALTER TABLE users ADD COLUMN llm_model TEXT NOT NULL DEFAULT ''"),
+    ("users", "quota_daily_calls", "ALTER TABLE users ADD COLUMN quota_daily_calls INTEGER"),
+]
+
+
+def migrate(conn) -> None:
+    """给建库早于 Phase 4b 的数据文件补列。"""
+    for table, column, ddl in _MIGRATIONS:
+        cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(ddl)
 
 # 任务的终态：重复回报这些状态要拒掉（409）
 TERMINAL_STATES = ("succeeded", "failed", "error")
@@ -117,6 +151,7 @@ class Database:
         conn = self._connect()
         try:
             conn.executescript(SCHEMA)
+            migrate(conn)
         finally:
             conn.close()
         self._write_lock = threading.Lock()

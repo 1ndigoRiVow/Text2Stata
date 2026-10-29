@@ -40,8 +40,10 @@ eval/_ssc_probe.py
 eval/_dirty_probe.py
 eval/_template_sweep.py
 eval/_mi_probe.py
+eval/_cloud_plan_smoke.py
 eval/_sweep_ws/
 eval/_mi_ws/
+eval/_cloud_smoke_ws/
 eval/*.log
 
 # 完整数据集不入库（含商业数据库导出内容，仅本地保留）
