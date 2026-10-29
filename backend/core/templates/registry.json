@@ -457,5 +457,53 @@
         "output_files": [
             "deduplicate_report.csv"
         ]
+    },
+    "mi_impute": {
+        "name": "缺失值多重插补（MI）",
+        "description": "用链式方程做 m=5 的多重插补，并把按行删除与 MI 两套系数、标准误并排对比。前提是缺失为 MAR。",
+        "file_path": "clean/mi_impute.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "mi_report.csv",
+            "mi_compare.csv"
+        ]
+    },
+    "mad_outlier": {
+        "name": "稳健异常值识别（MAD 口径）",
+        "description": "用中位数绝对偏差算修正 z 分数识别异常值（|M| > 3.5），与 3σ 口径对照，并给出全样本与剔除后两套回归。不受掩蔽效应影响。",
+        "file_path": "clean/mad_outlier.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "mad_report.csv",
+            "mad_outlier_result.rtf"
+        ]
+    },
+    "encode_categorical": {
+        "name": "分类 / 字符串变量编码",
+        "description": "自动扫描全表，把字符串变量 encode 成带值标签的数值变量，低基数的再生成虚拟变量，并对高基数变量给出警告。编码后用因子变量重跑基准回归。",
+        "file_path": "clean/encode_categorical.do",
+        "required_globals": [
+            "y",
+            "x"
+        ],
+        "optional_globals": [
+            "controls"
+        ],
+        "output_files": [
+            "categorical_report.csv",
+            "categorical_encode_result.rtf"
+        ]
     }
 }

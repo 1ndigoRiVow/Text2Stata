@@ -38,6 +38,10 @@ eval/_add_registry.py
 eval/_add_clean_registry.py
 eval/_ssc_probe.py
 eval/_dirty_probe.py
+eval/_template_sweep.py
+eval/_mi_probe.py
+eval/_sweep_ws/
+eval/_mi_ws/
 eval/*.log
 
 # 完整数据集不入库（含商业数据库导出内容，仅本地保留）
