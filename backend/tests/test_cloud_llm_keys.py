@@ -134,8 +134,10 @@ class TestDoubleKeyMode(unittest.TestCase):
         self.assertNotIn(SITE_KEY, text)
         body = resp.get_json()
         self.assertTrue(body["site_key_configured"])
-        self.assertTrue(body["site_key_hint"].startswith("sk-s"))
+        self.assertTrue(body["site_key_hint"].startswith("sk-"))
         self.assertIn("...", body["site_key_hint"])
+        # 掩码只留类型前缀 + 末 4 位：中间那段不能留下任何原文
+        self.assertEqual(body["site_key_hint"], f"sk-...{SITE_KEY[-4:]}")
 
     def test_plan_requires_key(self):
         """一个密钥都没有 → 402，并告诉用户可以自带。"""

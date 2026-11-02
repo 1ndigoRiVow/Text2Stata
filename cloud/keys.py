@@ -55,12 +55,18 @@ def byok_allowed() -> bool:
 
 
 def mask(key: str) -> str:
-    """只留首尾各 4 位。短密钥一律打成 ****，避免长度本身泄露信息。"""
+    """只留前缀类型 + 末 4 位。
+
+    掩码的目的是「让人认出自己配的是哪个 key」，不是给校验用，所以前段一律抹掉：
+    2026-10-29 出过一次事故，前缀片段被写进文档和对话，那也是泄露面。
+    短密钥一律打成 ****，避免长度本身泄露信息。
+    """
     if not key:
         return ""
     if len(key) <= 10:
         return "*" * 8
-    return f"{key[:4]}...{key[-4:]}"
+    head = key.split("-", 1)[0] if "-" in key else ""
+    return f"{head}-...{key[-4:]}"
 
 
 def resolve(payload: dict, data_dir=None):
