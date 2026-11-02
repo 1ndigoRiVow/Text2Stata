@@ -150,7 +150,7 @@ Caddy 负责 HTTPS，证书自动申请续期，比手写 Nginx 配置省事。
 
 BYOK 特意不落库：这样"你的密钥会不会被我看到"这个问题有干净的答案 —— 不会，服务端从头到尾没有存过。
 实现上不是靠"我们承诺不存"，而是**根本没有"保存密钥"这个接口**：密钥只在单次请求的内存里活一次，
-不写库、不写日志、不回显（状态接口只给 `sk-D...AWVB` 这种掩码）。回归测试里有断言扫全库找密钥明文。
+不写库、不写日志、不回显（状态接口只给 `sk-...XXXX` 这种掩码，类型前缀 + 末 4 位）。回归测试里有断言扫全库找密钥明文。
 
 ### 三道闸（管的对象不一样，别混）
 
@@ -191,7 +191,7 @@ T2S_SITE_TOKEN_BUDGET    兜底的月度 token 预算（没配单价时用）
 | **Phase 3** | 云端前端：登录/注册、任务列表与详情、手动计划建任务、数据集与代理管理、产物策略设置 | 完成（2026-10-12） |
 | **Phase 4a** | 模型可切换 + 推荐模型：模型目录（策展 + 远程发现）、设置面板下拉、 `/api/models` | 完成（2026-10-15） |
 | **Phase 4b** | 双密钥模式 + 配额与限流 | 完成（2026-10-29） |
-| Phase 5 | 部署上线：域名、HTTPS、备份、监控 | 待开始 |
+| Phase 5 | 部署上线：域名、HTTPS、备份、监控 | 物料就绪（`deploy/`），待服务器 |
 
 Phase 1 和 2 是一起设计一起落地的：**接口契约先定死在 `docs/PROTOCOL.md`，再分别实现**。
 产物回传策略按"方案 A 默认 + 方案 B 开关"实现（用户在设置里切 `artifact_mode`，
@@ -217,6 +217,47 @@ Phase 4b 说明：密钥解析在 `cloud/keys.py`，配额在 `cloud/quota.py`�
 因为调用已经发出去了，钱已经花了，按"成功才记"算会少算一大截。
 BYOK 也记，但 `cost_cny` 是 NULL（花的是用户自己的钱），且不进配额与预算的分子。
 模型目录接口 `/api/llm/models` 走 **POST 而不是 GET**：密钥放查询串会进访问日志。
+
+Phase 5 说明：部署物料在 `deploy/`（Dockerfile、docker-compose.yml、Caddyfile、
+backup.sh、cloud.env.example），服务器到位后按下面的上线手册走。
+两个关键设计决策写在文件注释里：gunicorn **单 worker 多线程**
+（突发限流是进程内存态，多 worker 各算各的；SQLite 也偏好单写入者）；
+镜像只装 Flask/requests/gunicorn 三个包（云端不解析 .dta，pyreadstat/pandas 是本地版的）。
+
+### Phase 5 上线手册（等服务器到位）
+
+```bash
+# 0) 前提：一台 Linux 服务器 + 一个域名，DNS A 记录指到服务器 IP
+#    （Let's Encrypt 签证书时会对域名做解析，DNS 没生效前 Caddy 起不来）
+
+# 1) 装 Docker（Ubuntu 为例）
+curl -fsSL https://get.docker.com | sh
+
+# 2) 拉代码
+git clone git@github.com:1ndigoRiVow/Text2Stata.git /opt/text2stata
+cd /opt/text2stata/deploy
+
+# 3) 配置（模板里有每一项的说明）
+cp cloud.env.example cloud.env
+vi cloud.env            # 至少填 T2S_DOMAIN
+
+# 4) 起服务（首次会 build 镜像 + Caddy 自动签证书，1-2 分钟）
+docker compose up -d
+curl https://$T2S_DOMAIN/api/health   # 期望 {"service":"text2stata-cloud","status":"ok"}
+
+# 5) 注册第一个账号（自动成为管理员），拿到初始邀请码：
+docker compose exec cloud cat /data/initial_invite.txt
+
+# 6) 每日备份进 crontab
+crontab -e
+#   0 4 * * * cd /opt/text2stata/deploy && ./backup.sh >> /var/log/t2s-backup.log 2>&1
+```
+
+上线后要记得的三件事：
+1. **agent 上传 CORS 白名单**填你的域名（agent 侧配置，见 PROTOCOL.md）；
+2. 站点密钥建议在中转站**单独建低额度令牌**，与个人 key 分开；
+3. `cloud_data` 这个 volume 是全部状态（SQLite + 产物 + secret），
+   换服务器时 `docker run --rm -v cloud_data:/data -v $PWD:/backup alpine tar czf /backup/t2s-data.tar.gz /data` 迁走。
 
 ---
 

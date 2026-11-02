@@ -1,0 +1,53 @@
+# 云端控制平面编排：cloud（Flask/gunicorn）+ Caddy（HTTPS 反代）。
+# 上线步骤见 docs/DEPLOYMENT.md「Phase 5 上线手册」。
+#
+#   cd deploy && cp cloud.env.example cloud.env  # 填域名与密钥
+#   docker compose up -d
+#
+# cloud.env 被 .gitignore 挡住，绝不入库。
+
+services:
+  cloud:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: text2stata-cloud
+    container_name: text2stata-cloud
+    restart: unless-stopped
+    env_file: cloud.env
+    environment:
+      # HTTPS 由 Caddy 终结，cookie 必须标 Secure
+      T2S_CLOUD_SECURE_COOKIE: "1"
+    volumes:
+      - cloud_data:/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: text2stata-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Caddyfile 里引用；写在这里而不是 Caddyfile，换域名不用改文件
+      T2S_DOMAIN: ${T2S_DOMAIN:?请在 cloud.env 里设置 T2S_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - cloud
+
+volumes:
+  cloud_data:      # SQLite + 产物 + secret，备份脚本备份的就是它
+  caddy_data:      # 证书，丢了会重新签但会被 Let's Encrypt 限速，别随便删
+  caddy_config:

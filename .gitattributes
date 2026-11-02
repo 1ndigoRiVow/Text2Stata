@@ -1,0 +1,2 @@
+# Shell 脚本一律 LF：backup.sh 在 Linux 服务器上跑，CRLF 会让 sh 直接语法报错。
+*.sh text eol=lf

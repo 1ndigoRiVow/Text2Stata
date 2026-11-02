@@ -55,6 +55,10 @@ testdata_full.dta
 cloud_data/
 agent_data/
 
+# 部署：真实环境配置与备份（cloud.env.example 是模板，可入库）
+deploy/cloud.env
+backups/
+
 # Git Bash 下 2>nul 会生成字面文件 nul（Windows 保留设备名，删不掉），永不入库
 nul
 

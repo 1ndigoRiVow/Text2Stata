@@ -159,6 +159,13 @@ def create_app(data_dir=None, db_path=None) -> Flask:
             "UPDATE invites SET used_by = ?, used_at = ? WHERE code = ?",
             (user_id, utcnow(), invite_code),
         )
+        if is_first:
+            # 管理员已产生，初始邀请码文件使命完成，删掉（无人值守部署时
+            # 它写在 data_dir/initial_invite.txt，一直留着是多余的暴露面）
+            try:
+                (data_dir / "initial_invite.txt").unlink(missing_ok=True)
+            except OSError:
+                pass
         session["user_id"] = user_id
         return jsonify({"status": "success", "user": _public_user(db.query_one(
             "SELECT * FROM users WHERE id = ?", (user_id,)))}), 201
@@ -678,6 +685,13 @@ def create_app(data_dir=None, db_path=None) -> Flask:
         return send_from_directory(static_dir, filename)
 
     if bootstrap_invite:
+        # 无人值守部署（Docker 后台跑）拿不到 stdout，落到文件里；
+        # 管理员注册成功后会被删掉（见 register）
+        try:
+            (data_dir / "initial_invite.txt").write_text(
+                bootstrap_invite + "\n", encoding="utf-8")
+        except OSError:
+            pass
         print("=" * 62)
         print("  数据库为空，已生成初始邀请码（仅此一处可见，用完即废）：")
         print(f"    {bootstrap_invite}")

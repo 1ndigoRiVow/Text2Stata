@@ -1,0 +1,27 @@
+# Caddy：域名从环境变量 T2S_DOMAIN 读（compose 里传入），
+# 证书自动申请续期，不需要手动碰。
+# 代理上传的 CORS 白名单在 agent 侧配置，改域名时记得同步那里。
+
+{$T2S_DOMAIN} {
+	encode gzip zstd
+
+	# 上传走代理（用户浏览器直连本机 127.0.0.1:5100），云端这里不收大文件，
+	# 但 body 上限还是给一道（与 Flask MAX_CONTENT_LENGTH 双保险）。
+	request_body {
+		max_size 100MB
+	}
+
+	reverse_proxy cloud:8000 {
+		# LLM 计划调用可能到几十秒
+		transport http {
+			response_header_timeout 120s
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
