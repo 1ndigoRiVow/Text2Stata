@@ -173,8 +173,13 @@ class LocalAgent:
         self.last_task = None  # 给 /status 看的最近一条任务记录
 
     # ---------------- 数据集注册 ----------------
-    def register_local_dataset(self, dta_path: Path):
-        """存档 .dta → 提取 schema → 注册到云端。返回 (dataset_id, schema)。"""
+    def register_local_dataset(self, dta_path: Path, display_name: str = ""):
+        """存档 .dta → 提取 schema → 注册到云端。返回 (dataset_id, schema)。
+
+        display_name：云端展示用的数据集名。浏览器上传时文件先落成
+        incoming_<随机>.dta 的临时名，注册必须用浏览器带来的原始文件名，
+        否则用户新建任务时看到的全是临时名（问题 #4，docs/ISSUES.md）。
+        """
         import pyreadstat
 
         if not dta_path.exists():
@@ -191,8 +196,9 @@ class LocalAgent:
             for col in meta.column_names
         ]
 
-        dataset_id = self.cloud.register_dataset(dta_path.name, schema)
-        self.registry.add(dataset_id, dta_path.name, archived)
+        name = display_name.strip() or dta_path.name
+        dataset_id = self.cloud.register_dataset(name, schema)
+        self.registry.add(dataset_id, name, archived)
         return dataset_id, schema
 
     # ---------------- 任务执行 ----------------
@@ -300,12 +306,19 @@ def create_local_app(agent: LocalAgent, cloud_origin: str):
         tmp = agent.registry.store_dir / f"incoming_{uuid.uuid4().hex[:8]}.dta"
         uploaded.save(tmp)
         try:
-            dataset_id, schema = agent.register_local_dataset(tmp)
+            # 注册名用浏览器带来的原始文件名；tmp 只是落盘中转（问题 #4）
+            dataset_id, schema = agent.register_local_dataset(
+                tmp, display_name=uploaded.filename or "")
         except Exception as exc:
             return jsonify({"status": "error", "message": f"注册数据集失败：{exc}"}), 502
         finally:
             tmp.unlink(missing_ok=True)
-        return jsonify({"status": "success", "dataset_id": dataset_id, "schema": schema}), 201
+        return jsonify({
+            "status": "success",
+            "dataset_id": dataset_id,
+            "name": uploaded.filename or "",
+            "schema": schema,
+        }), 201
 
     @app.get("/datasets")
     def list_datasets():

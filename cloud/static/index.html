@@ -93,6 +93,7 @@
     .badge.failed, .badge.error { background: #fbe3e3; color: var(--danger); }
     .detail-block { margin-top: 14px; }
     .detail-block h3 { font-size: .88rem; margin-bottom: 6px; }
+    .mini-link { font-size: .8rem; font-weight: 400; margin-left: 10px; }
     pre { background: #f7fafc; border: 1px solid var(--border); border-radius: 6px;
         padding: 12px; font-size: .78rem; overflow: auto; max-height: 320px;
         white-space: pre-wrap; word-break: break-all; }
@@ -251,9 +252,15 @@
                     <p class="muted" id="keyModeHint">加载中…</p>
                     <label>自带密钥 BYOK（可选，只存在你这台浏览器）</label>
                     <input type="password" id="byokKey" placeholder="sk-..." autocomplete="off">
+                    <label style="margin-top:8px">接口地址（可选）</label>
+                    <input type="text" id="byokUrl" placeholder="留空 = 用站点同一个服务"
+                           autocomplete="off">
                     <p class="muted">填了就用你的密钥，不计配额；留空则用站点密钥（计入每日配额）。
-                        这个密钥只写进浏览器本地存储，随请求发出，服务端不落库——
+                        密钥只写进浏览器本地存储，随请求发出，服务端不落库——
                         不是承诺，是它压根没往数据库写过。</p>
+                    <p class="muted">接口地址什么时候要填：你的 key 和站点用的是<b>同一家</b>服务时不用填；
+                        key 来自别家中转站或 OpenAI 官方时，填那家的接口地址
+                        （形如 <code>https://…/v1/chat/completions</code>）。</p>
                     <label>计划模型</label>
                     <select id="llmModel"></select>
                     <div class="kv-inline" id="quotaBox"></div>
@@ -406,8 +413,11 @@ async function showTaskDetail(taskId) {
         ${artifacts ? `<div class="detail-block"><h3>产物</h3>${artifacts}</div>` : ''}
         ${!artifacts.length && t.status === 'succeeded' && !t.artifact_upload
             ? '<div class="detail-block muted">产物按你的设置保留在本机，请到执行代理的工作目录取。</div>' : ''}
-        <div class="detail-block"><h3>生成的 .do 脚本</h3><pre>${esc(t.do_script)}</pre></div>
-        <div class="detail-block"><h3>Stata 日志</h3>
+        <div class="detail-block"><h3>生成的 .do 脚本
+            ${t.do_script ? `<a class="mini-link" href="/api/tasks/${t.id}/script">下载 .do</a>` : ''}
+            </h3><pre>${esc(t.do_script)}</pre></div>
+        <div class="detail-block"><h3>Stata 日志
+            <a class="mini-link" href="/api/tasks/${t.id}/log?download=1">下载日志</a></h3>
             <pre id="logPre">加载中…</pre></div>`;
     const logResp = await fetch('/api/tasks/' + taskId + '/log');
     const logText = await logResp.text();
@@ -572,8 +582,17 @@ async function revokeAgent(agentId) {
 // BYOK 只写 localStorage。服务端根本没有"保存密钥"这个接口——
 // 它每次随请求带来，用完即弃，从头到尾没进过数据库。
 const BYOK_STORE = 't2s_byok_key';
+const BYOK_URL_STORE = 't2s_byok_url';
 
 function getByok() { return localStorage.getItem(BYOK_STORE) || ''; }
+function getByokUrl() { return localStorage.getItem(BYOK_URL_STORE) || ''; }
+function byokPayload() {
+    // 密钥与接口地址一起带：key 和 url 在中转站生态里是绑定的，
+    // 别家的 key 必须配上别家的地址才有用（协议 3.5）
+    const p = { api_key: getByok() };
+    if (getByokUrl()) p.api_url = getByokUrl();
+    return p;
+}
 
 async function loadLlmSettings() {
     const { body } = await api('/api/llm/status', { method: 'POST', body: '{}' });
@@ -583,6 +602,7 @@ async function loadLlmSettings() {
         ? `站点密钥已配置（${body.site_key_hint}），计入每日配额。想不受配额限制就填自带密钥。`
         : '站点未配置密钥，填一个自带密钥才能用「一句话生成计划」。';
     document.getElementById('byokKey').value = getByok();
+    document.getElementById('byokUrl').value = getByokUrl();
 
     await loadModelOptions(body);
     renderQuota(body);
@@ -591,7 +611,7 @@ async function loadLlmSettings() {
 async function loadModelOptions(status) {
     // 用本机存的 BYOK 去问目录，"这个模型我能不能用"才是准的
     const { body } = await api('/api/llm/models', {
-        method: 'POST', body: JSON.stringify({ api_key: getByok() }),
+        method: 'POST', body: JSON.stringify(byokPayload()),
     });
     const sel = document.getElementById('llmModel');
     const recommended = (body && body.recommended) || status.recommended_model || '';
@@ -629,6 +649,10 @@ async function saveLlmSettings() {
     if (key) localStorage.setItem(BYOK_STORE, key);
     else localStorage.removeItem(BYOK_STORE);
 
+    const url = document.getElementById('byokUrl').value.trim();
+    if (url) localStorage.setItem(BYOK_URL_STORE, url);
+    else localStorage.removeItem(BYOK_URL_STORE);
+
     const { status, body } = await api('/api/auth/settings', {
         method: 'POST',
         body: JSON.stringify({ llm_model: document.getElementById('llmModel').value }),
@@ -641,7 +665,9 @@ async function saveLlmSettings() {
 
 function clearByok() {
     localStorage.removeItem(BYOK_STORE);
+    localStorage.removeItem(BYOK_URL_STORE);
     document.getElementById('byokKey').value = '';
+    document.getElementById('byokUrl').value = '';
     toast('本机密钥已清除');
     loadLlmSettings();
 }
@@ -659,7 +685,7 @@ async function planFromQuery() {
     err.textContent = '生成中…';
     const { status, body } = await api('/api/plan', {
         method: 'POST',
-        body: JSON.stringify({ dataset_id, query, api_key: getByok() }),
+        body: JSON.stringify({ dataset_id, query, ...byokPayload() }),
     });
     if (status >= 400) {
         err.textContent = body.message || '生成失败';

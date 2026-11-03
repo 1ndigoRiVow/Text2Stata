@@ -506,7 +506,31 @@ def create_app(data_dir=None, db_path=None) -> Flask:
         task = get_owned_task(task_id, "user_id", g.user["id"])
         if not task:
             return jsonify({"status": "error", "message": "任务不存在。"}), 404
-        return app.response_class(task.get("log") or "", mimetype="text/plain")
+        log_text = task.get("log") or ""
+        # ?download=1 → 当附件下载（写论文/复现要留档），否则页面内展示
+        if request.args.get("download") == "1":
+            return app.response_class(
+                log_text, mimetype="text/plain",
+                headers={"Content-Disposition":
+                         f"attachment; filename={task_id}_log.txt"},
+            )
+        return app.response_class(log_text, mimetype="text/plain")
+
+    @app.get("/api/tasks/<task_id>/script")
+    @login_required
+    def download_task_script(task_id):
+        """导出生成的 .do 脚本——用户要拿去复现/交作业/改了再跑。"""
+        task = get_owned_task(task_id, "user_id", g.user["id"])
+        if not task:
+            return jsonify({"status": "error", "message": "任务不存在。"}), 404
+        script = task.get("do_script") or ""
+        if not script.strip():
+            return jsonify({"status": "error", "message": "这个任务没有脚本（还没生成或执行层没回传）。"}), 404
+        return app.response_class(
+            script, mimetype="text/plain",
+            headers={"Content-Disposition":
+                     f"attachment; filename={task_id}_{task.get('selected_template') or 'task'}.do"},
+        )
 
     @app.get("/api/tasks/<task_id>/artifacts/<filename>")
     @login_required
