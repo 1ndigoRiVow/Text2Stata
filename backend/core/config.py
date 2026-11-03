@@ -34,6 +34,10 @@ DEFAULTS = {
     "max_upload_mb": 100,
     "host": "127.0.0.1",
     "port": 5000,
+    # 云端模式（ISSUES.md #2）：代理并进本地版 GUI 后，配置也进 config.json
+    "cloud_enabled": False,
+    "cloud_url": "",
+    "cloud_token": "",
 }
 
 
@@ -119,12 +123,16 @@ PORT = DEFAULTS["port"]
 CORS_ORIGINS = ["http://127.0.0.1:5000", "http://localhost:5000", "null"]
 FLASK_DEBUG = False
 API_LINES = dict(DEFAULTS["api_keys"])
+CLOUD_ENABLED = False
+CLOUD_URL = DEFAULTS["cloud_url"]
+CLOUD_TOKEN = DEFAULTS["cloud_token"]
 
 
 def refresh() -> None:
     """重新计算生效配置。改完 config.json 或环境变量后调用。"""
     global API_URL, DEFAULT_MODEL, STATA_PATH, MAX_UPLOAD_MB, HOST, PORT
     global CORS_ORIGINS, FLASK_DEBUG, API_LINES
+    global CLOUD_ENABLED, CLOUD_URL, CLOUD_TOKEN
 
     file_cfg = _read_file_config()
     file_keys = file_cfg.get("api_keys") or {}
@@ -154,6 +162,12 @@ def refresh() -> None:
         "line3": os.getenv("TEXT2STATA_API_KEY_LINE3") or file_keys.get("line3", ""),
     }
 
+    CLOUD_ENABLED = get_bool(
+        "TEXT2STATA_CLOUD_ENABLED", bool(file_cfg.get("cloud_enabled")))
+    CLOUD_URL = _pick("TEXT2STATA_CLOUD_URL", file_cfg.get("cloud_url"), "")
+    # 代理令牌只在本地 config.json / 环境变量里，永不回传明文（public_config 只给掩码）
+    CLOUD_TOKEN = os.getenv("TEXT2STATA_CLOUD_TOKEN") or file_cfg.get("cloud_token") or ""
+
 
 def _mask(secret: str) -> str:
     """只露头尾，够用户认出是哪把 key 就行。"""
@@ -171,6 +185,12 @@ def public_config() -> dict:
         "default_model": DEFAULT_MODEL,
         "stata_path": STATA_PATH,
         "max_upload_mb": MAX_UPLOAD_MB,
+        "cloud": {
+            "enabled": CLOUD_ENABLED,
+            "url": CLOUD_URL,
+            "token_set": bool(CLOUD_TOKEN),
+            "token_hint": _mask(CLOUD_TOKEN),
+        },
         "keys": [
             {"line": name, "set": bool(API_LINES.get(name)), "hint": _mask(API_LINES.get(name, ""))}
             for name in ("line1", "line2", "line3")
@@ -198,6 +218,15 @@ def save_config(patch: dict) -> None:
                 except (TypeError, ValueError):
                     continue
             current[field] = value
+
+    # 云端模式：action=start/stop 由 /api/cloud_agent 处理，这里只存开关与地址；
+    # token 同 api_keys 的规矩——空字符串表示"不改"，避免把已保存的令牌覆盖掉
+    if "cloud_enabled" in patch:
+        current["cloud_enabled"] = bool(patch["cloud_enabled"])
+    if patch.get("cloud_url"):
+        current["cloud_url"] = str(patch["cloud_url"]).strip().rstrip("/")
+    if str(patch.get("cloud_token") or "").strip():
+        current["cloud_token"] = str(patch["cloud_token"]).strip()
 
     incoming_keys = patch.get("api_keys") or {}
     for name in ("line1", "line2", "line3"):

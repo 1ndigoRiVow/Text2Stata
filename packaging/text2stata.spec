@@ -33,11 +33,15 @@ binaries = []
 # launcher.py 里 `import app` / `from core import ...` 写在函数体内，
 # PyInstaller 静态分析看不到，必须显式列出来。
 # pyreadstat 带编译好的 _readstat 扩展，collect_all 才拿得全。
+# agent 包：core/cloud_agent.py 在运行时才 `from agent.agent import ...`
+#（惰性导入，静态分析同样看不见），云端模式全靠它。
 # --------------------------------------------------------------------------
 hiddenimports = ["app", "core", "core.config", "core.paths", "core.stata_detect",
                  "core.llm_agent", "core.logic_center", "core.result_auditor",
-                 "core.stata_worker", "core.template_manager"]
+                 "core.stata_worker", "core.template_manager",
+                 "agent", "agent.agent"]
 hiddenimports += collect_submodules("core")
+hiddenimports += collect_submodules("agent")
 
 for package in ("pyreadstat", "pandas", "flask", "flask_cors"):
     try:

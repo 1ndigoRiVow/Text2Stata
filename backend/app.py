@@ -10,6 +10,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 from core import config, model_catalog, paths, stata_detect
+from core.cloud_agent import CloudAgentManager
 from core.llm_agent import LLMAgent
 from core.logic_center import generate_stata_header
 from core.result_auditor import ResultAuditor
@@ -31,6 +32,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 template_mgr = TemplateManager()
 worker = StataWorker(stata_path=config.STATA_PATH or None, workspace=WORKSPACE_DIR)
 auditor = ResultAuditor()
+cloud_agent = CloudAgentManager()
 
 
 def apply_runtime_config():
@@ -371,6 +373,43 @@ def detect_stata():
     return jsonify({"status": "success", "candidates": stata_detect.detect()})
 
 
+# --------------------------------------------------------------------------
+# 云端模式（ISSUES.md #2）：代理并进本地版 GUI，零命令行
+# --------------------------------------------------------------------------
+@app.route("/api/cloud_agent", methods=["GET"])
+def cloud_agent_status():
+    return jsonify({"status": "success", "agent": cloud_agent.status()})
+
+
+@app.route("/api/cloud_agent", methods=["POST"])
+def cloud_agent_control():
+    payload = request.get_json(silent=True) or {}
+    action = str(payload.get("action") or "").strip()
+
+    if action == "start":
+        result = cloud_agent.start(
+            str(payload.get("cloud_url") or ""),
+            str(payload.get("token") or ""),
+        )
+        ok = result.get("status") == "success"
+        # 启动成功就把配置落盘，下次打开本地版自动拉起代理
+        config.save_config({
+            "cloud_enabled": ok,
+            "cloud_url": payload.get("cloud_url") or "",
+            "cloud_token": payload.get("token") or "",
+        })
+        result["agent"] = cloud_agent.status()
+        return jsonify(result), (200 if ok else 400)
+
+    if action == "stop":
+        result = cloud_agent.stop()
+        config.save_config({"cloud_enabled": False})
+        result["agent"] = cloud_agent.status()
+        return jsonify(result)
+
+    return jsonify({"status": "error", "message": "action 只能是 start 或 stop。"}), 400
+
+
 @app.route("/api/models", methods=["GET"])
 def list_models():
     """
@@ -394,6 +433,11 @@ def list_models():
 #
 # 打包版的目标是"双击就打开浏览器"，不能再让用户自己去磁盘里找 index.html。
 # --------------------------------------------------------------------------
+
+# 配置里开了云端模式就自动拉起代理（覆盖升级后用户不用重新点开关）
+cloud_agent.autostart()
+
+
 @app.route("/")
 def index_page():
     if not (FRONTEND_DIR / "index.html").exists():

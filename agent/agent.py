@@ -273,16 +273,28 @@ class LocalAgent:
         }
 
     # ---------------- 常驻循环 ----------------
-    def serve_forever(self):
+    def serve_forever(self, stop_event=None):
+        """轮询直到 stop_event 被置位（没传就永远跑，兼容 CLI 用法）。
+
+        睡眠用 event.wait 而不是 time.sleep：置位能立刻打断，
+        本地版 GUI 里"停止代理"才不用等一个轮询周期。
+        """
         interval = max(1, int(self.config.values.get("poll_interval") or 2))
+
+        def _sleep(seconds):
+            if stop_event is not None:
+                return stop_event.wait(seconds)
+            time.sleep(seconds)
+
         print(f"[agent] 开始轮询 {self.config.cloud_url}（每 {interval} 秒）")
-        while True:
+        while not (stop_event is not None and stop_event.is_set()):
             try:
                 if not self.run_once():
-                    time.sleep(interval)
+                    _sleep(interval)
             except requests.RequestException as exc:
                 print(f"[agent] 云端不可达（{exc}），{interval * 5} 秒后重试")
-                time.sleep(interval * 5)
+                _sleep(interval * 5)
+        print("[agent] 轮询已停止")
 
 
 # --------------------------------------------------------------------------

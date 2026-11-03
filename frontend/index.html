@@ -542,6 +542,23 @@
                     <input type="number" class="text-input" id="cfg-maxmb" min="1" max="2048">
                 </div>
 
+                <div class="field">
+                    <label>云端模式（可选）</label>
+                    <input type="text" class="text-input" id="cfg-cloud-url"
+                           placeholder="云端地址，如 https://stata.example.com" style="margin-bottom: 8px;">
+                    <input type="password" class="text-input" id="cfg-cloud-token"
+                           placeholder="代理令牌 t2sa_..." style="margin-bottom: 8px;">
+                    <div class="settings-hint">
+                        在云端网站的「代理管理」里创建代理，把令牌粘到这里。
+                        开启后这台电脑会自动领取云端任务并用本机 Stata 执行，
+                        数据不离开这台电脑。令牌只存在本机。
+                    </div>
+                    <div class="path-row" style="margin-top: 8px;">
+                        <button class="small-btn" id="cloudAgentBtn" onclick="toggleCloudAgent()">开启</button>
+                        <span class="status-line" id="cloudAgentStatus"></span>
+                    </div>
+                </div>
+
                 <div class="settings-hint" id="cfgPathHint" style="margin-bottom: 14px;"></div>
             </div>
 
@@ -973,6 +990,16 @@
                 document.getElementById("cfgPathHint").textContent =
                     `配置文件：${cfg.config_file || "（未知）"}`;
 
+                const cloud = cfg.cloud || {};
+                document.getElementById("cfg-cloud-url").value = cloud.url || "";
+                const tokenInput = document.getElementById("cfg-cloud-token");
+                tokenInput.value = "";
+                tokenInput.placeholder = cloud.token_set
+                    ? `已保存：${cloud.token_hint}（留空表示不改）`
+                    : "代理令牌 t2sa_...";
+
+                refreshCloudAgent();
+
                 const keys = cfg.keys || [];
                 ["cfg-key1", "cfg-key2", "cfg-key3"].forEach((id, index) => {
                     const input = document.getElementById(id);
@@ -1013,6 +1040,76 @@
             preset.value = (current && seen.has(current))
                 ? current
                 : (recommended && seen.has(recommended) ? recommended : preset.options[0].value);
+        }
+
+        // ---- 云端模式（代理并进 GUI，零命令行） ----
+        let cloudAgentRunning = false;
+
+        async function refreshCloudAgent() {
+            try {
+                const response = await fetch(`${API_BASE}/cloud_agent`);
+                const data = await response.json();
+                const agent = data.agent || {};
+                cloudAgentRunning = !!agent.running;
+                renderCloudAgent(agent);
+            } catch { /* 面板照常开，状态显示未连接 */ }
+        }
+
+        function renderCloudAgent(agent) {
+            const btn = document.getElementById("cloudAgentBtn");
+            const line = document.getElementById("cloudAgentStatus");
+            if (agent.running) {
+                btn.textContent = "关闭";
+                let text = `运行中 · 轮询 ${agent.cloud_url}`;
+                const last = agent.last_task;
+                if (last) {
+                    text += ` · 最近任务 ${last.status}`;
+                    if (last.audit_warnings) text += `（体检 ${last.audit_warnings} 条提醒）`;
+                }
+                if (agent.last_error) text += ` · 异常：${agent.last_error}`;
+                line.textContent = text;
+            } else {
+                btn.textContent = "开启";
+                line.textContent = agent.last_error
+                    ? `已停止 · 上次异常：${agent.last_error}` : "未开启";
+            }
+        }
+
+        async function toggleCloudAgent() {
+            const status = document.getElementById("cloudAgentStatus");
+            if (cloudAgentRunning) {
+                status.textContent = "正在停止（等当前任务跑完）…";
+                await fetch(`${API_BASE}/cloud_agent`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "stop" })
+                });
+                refreshCloudAgent();
+                return;
+            }
+            const url = document.getElementById("cfg-cloud-url").value.trim();
+            const token = document.getElementById("cfg-cloud-token").value.trim();
+            if (!url || !token) {
+                // token 可能早就存过本机，只有 url 也要填了才能起
+                status.textContent = !url
+                    ? "先填云端地址。" : "令牌没填（若之前保存过，重新粘贴一次即可）。";
+                return;
+            }
+            status.textContent = "启动中…";
+            const response = await fetch(`${API_BASE}/cloud_agent`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "start", cloud_url: url, token })
+            });
+            const data = await response.json();
+            if (data.status !== "success") {
+                status.textContent = data.message || "启动失败";
+                return;
+            }
+            // token 只在这一趟请求里走明文，落盘由后端做；输入框清掉
+            document.getElementById("cfg-cloud-token").value = "";
+            renderCloudAgent(data.agent || {});
+            cloudAgentRunning = true;
         }
 
         async function detectStata() {
