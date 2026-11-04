@@ -164,28 +164,32 @@
     </div>
     <div class="layout">
         <div class="nav">
-            <button data-page="tasks" class="active" onclick="showPage('tasks')">任务</button>
+            <button data-page="data" class="active" onclick="showPage('data')">数据集</button>
             <button data-page="new" onclick="showPage('new')">新建任务</button>
-            <button data-page="data" onclick="showPage('data')">数据集</button>
+            <button data-page="tasks" onclick="showPage('tasks')">任务</button>
             <button data-page="agents" onclick="showPage('agents')">执行代理</button>
             <button data-page="settings" onclick="showPage('settings')">设置</button>
         </div>
         <div class="content">
 
-            <!-- 任务列表 + 详情 -->
-            <div id="page-tasks" class="page">
+            <!-- 数据集（使用流程第一步：先有数据） -->
+            <div id="page-data" class="page">
                 <div class="panel">
-                    <h2>任务列表</h2>
-                    <p class="muted">每 3 秒自动刷新。点击任务查看脚本、日志、体检与产物。</p>
-                    <div id="taskList"><p class="muted">加载中…</p></div>
+                    <h2>上传数据</h2>
+                    <p class="muted">.dta 只上传到你本机的执行代理，云端只登记变量名与标签。</p>
+                    <div id="agentStatus" class="agent-status offline">正在探测本机代理…</div>
+                    <label>选择 .dta 文件</label>
+                    <input type="file" id="dtaFile" accept=".dta">
+                    <button class="primary" style="margin-top:12px" onclick="uploadDataset()">上传到本机代理</button>
+                    <div class="form-error" id="uploadError"></div>
                 </div>
-                <div class="panel hidden" id="taskDetailPanel">
-                    <h2>任务详情</h2>
-                    <div id="taskDetail"></div>
+                <div class="panel">
+                    <h2>已登记的数据集</h2>
+                    <div id="datasetList"><p class="muted">加载中…</p></div>
                 </div>
             </div>
 
-            <!-- 新建任务 -->
+            <!-- 新建任务（第二步：有数据了，说出你要什么） -->
             <div id="page-new" class="page hidden">
                 <div class="panel">
                 <h2>新建任务</h2>
@@ -212,20 +216,16 @@
                 </div>
             </div>
 
-            <!-- 数据集 -->
-            <div id="page-data" class="page hidden">
+            <!-- 任务（第三步：提交后回来看结果） -->
+            <div id="page-tasks" class="page hidden">
                 <div class="panel">
-                    <h2>上传数据</h2>
-                    <p class="muted">.dta 只上传到你本机的执行代理，云端只登记变量名与标签。</p>
-                    <div id="agentStatus" class="agent-status offline">正在探测本机代理…</div>
-                    <label>选择 .dta 文件</label>
-                    <input type="file" id="dtaFile" accept=".dta">
-                    <button class="primary" style="margin-top:12px" onclick="uploadDataset()">上传到本机代理</button>
-                    <div class="form-error" id="uploadError"></div>
+                    <h2>任务列表</h2>
+                    <p class="muted">每 3 秒自动刷新。点击任务查看脚本、日志、体检与产物。</p>
+                    <div id="taskList"><p class="muted">加载中…</p></div>
                 </div>
-                <div class="panel">
-                    <h2>已登记的数据集</h2>
-                    <div id="datasetList"><p class="muted">加载中…</p></div>
+                <div class="panel hidden" id="taskDetailPanel">
+                    <h2>任务详情</h2>
+                    <div id="taskDetail"></div>
                 </div>
             </div>
 
@@ -360,6 +360,7 @@ function enterApp() {
     document.getElementById('appView').classList.remove('hidden');
     document.getElementById('whoami').textContent = me.username;
     loadTasks(); loadDatasets(); loadAgents(); loadTemplates(); loadSettings();
+    showPage('data');  // 使用流第一步永远是数据：先上传/确认数据集，再谈任务
     tasksTimer = setInterval(loadTasks, 3000);
 }
 function showPage(name) {
@@ -508,7 +509,7 @@ async function loadDatasets() {
         <tr><th>名称</th><th>变量数</th><th>登记时间</th></tr>
         ${datasets.map(d => `<tr><td>${esc(d.name)}</td><td>${d.schema.length}</td>
             <td class="muted">${esc((d.created_at || '').replace('T', ' ').slice(0, 16))}</td></tr>`).join('')}
-        </table>` : '<p class="muted" style="padding:8px 4px">还没有数据集。</p>';
+        </table>` : '<p class="muted" style="padding:8px 4px">还没有数据集。先在上面选一个 .dta 文件上传，登记完就能去「新建任务」了。</p>';
     renderNewTaskForm();
 }
 async function probeAgent() {
